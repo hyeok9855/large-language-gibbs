@@ -2,12 +2,12 @@
 
 This directory contains the experiments for sampling from simple distributions (§4): a uniform and a Gaussian distribution.
 
-From the root directory, enter this directory before running the commands below:
+## Basic setup
+
+Enter this directory before running the commands below:
 ```bash
 cd sampling
 ```
-
-## Basic setup
 
 The experiments query an OpenAI-compatible chat/completions API.
 

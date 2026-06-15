@@ -56,7 +56,10 @@ def main(args: argparse.Namespace):
     if "indep" in args.methods:
         print("\n--- Running Independent Sampling ---")
         # Check if the results already exist
-        indep_out_path = out_dir / f"independent_sampling_seed{args.seed}.json"
+        indep_out_path = (
+            out_dir
+            / f"independent{'_reasoning' if args.manual_reasoning else ''}_seed{args.seed}.json"
+        )
         if indep_out_path.exists():
             print(f"Results already exist at {indep_out_path}, skipping...")
         else:
@@ -65,10 +68,18 @@ def main(args: argparse.Namespace):
                 base_url=args.base_url,
                 system_prompt=system_prompt,
                 temperature=args.temperature,
-                max_tokens=20,
+                max_tokens=20 + (1024 if args.manual_reasoning else 0),
             )
             indep_template, indep_schema = create_template_and_schema("indep", args)
-            indep_prior = LLMPrior(llm=llm, template=indep_template, shuffle_variables=False)
+            indep_prior = LLMPrior(
+                llm=llm,
+                template=indep_template,
+                shuffle_variables=False,
+                manual_reasoning=args.manual_reasoning,
+            )
+            indep_prior.reasoning_prompt = indep_prior.reasoning_prompt.replace(
+                "step-by-step", "short"
+            )
             indep_samples = indep_prior.sample_parallel(
                 args.n_samples_per_chain,
                 [indep_schema] * args.n_chains,
@@ -84,7 +95,10 @@ def main(args: argparse.Namespace):
     if "batch" in args.methods:
         print("\n--- Running Batch Sampling ---")
         # Check if the results already exist
-        batch_out_path = out_dir / f"batch_sampling_nc{args.n_chains}_seed{args.seed}.json"
+        batch_out_path = (
+            out_dir
+            / f"batch{'_reasoning' if args.manual_reasoning else ''}_nc{args.n_chains}_seed{args.seed}.json"
+        )
         if batch_out_path.exists():
             print(f"Results already exist at {batch_out_path}, skipping...")
         else:
@@ -93,10 +107,18 @@ def main(args: argparse.Namespace):
                 base_url=args.base_url,
                 system_prompt=system_prompt,
                 temperature=args.temperature,
-                max_tokens=args.n_samples_per_chain * 15,
+                max_tokens=args.n_samples_per_chain * 15 + (1024 if args.manual_reasoning else 0),
             )
             batch_template, batch_schema = create_template_and_schema("batch", args)
-            batch_prior = LLMPrior(llm=llm, template=batch_template, shuffle_variables=False)
+            batch_prior = LLMPrior(
+                llm=llm,
+                template=batch_template,
+                shuffle_variables=False,
+                manual_reasoning=args.manual_reasoning,
+            )
+            batch_prior.reasoning_prompt = batch_prior.reasoning_prompt.replace(
+                "step-by-step", "short"
+            )
             batch_results = batch_prior.sample_parallel(
                 1, [batch_schema] * args.n_chains, verbose=args.verbose, pbar=True
             )
@@ -115,7 +137,7 @@ def main(args: argparse.Namespace):
         # Check if the results already exist
         gibbs_out_path = (
             out_dir
-            / f"gibbs_sampling_k{args.gibbs_k_vars}_b{args.gibbs_block_size}_nc{args.n_chains}_seed{args.seed}.json"
+            / f"gibbs{'_reasoning' if args.manual_reasoning else ''}_k{args.gibbs_k_vars}_b{args.gibbs_block_size}_nc{args.n_chains}_seed{args.seed}.json"
         )
         if gibbs_out_path.exists():
             print(f"Results already exist at {gibbs_out_path}, skipping...")
@@ -126,14 +148,16 @@ def main(args: argparse.Namespace):
                 base_url=args.base_url,
                 system_prompt=system_prompt,
                 temperature=args.temperature,
-                max_tokens=args.gibbs_k_vars * 20,
+                max_tokens=args.gibbs_k_vars * 20 + (1024 if args.manual_reasoning else 0),
             )
 
             gibbs_template, gibbs_schema = create_template_and_schema("gibbs", args)
             llm_prior = LLMPrior(
                 llm=llm,
                 template=gibbs_template,
+                manual_reasoning=args.manual_reasoning,
             )
+            llm_prior.reasoning_prompt = llm_prior.reasoning_prompt.replace("step-by-step", "short")
             gibbs_prior = GibbsLLMPrior(
                 llm_prior=llm_prior,
                 burn_in=args.burn_in,
@@ -163,7 +187,7 @@ def main(args: argparse.Namespace):
         print("\n--- Running Barker-Gibbs Sampling ---")
         barker_out_path = (
             out_dir
-            / f"barker_gibbs{'_reasoning' if args.manual_reasoning else ''}_sampling_k{args.gibbs_k_vars}_b{args.gibbs_block_size}_nc{args.n_chains}_seed{args.seed}.json"
+            / f"barkergibbs{'_reasoning' if args.manual_reasoning else ''}_k{args.gibbs_k_vars}_b{args.gibbs_block_size}_nc{args.n_chains}_seed{args.seed}.json"
         )
         if barker_out_path.exists():
             print(f"Results already exist at {barker_out_path}, skipping...")
@@ -177,17 +201,20 @@ def main(args: argparse.Namespace):
                 base_url=args.base_url,
                 system_prompt=system_prompt,
                 temperature=1.0,
-                max_tokens=20 if not args.manual_reasoning else 512,
+                max_tokens=20 + (1024 if args.manual_reasoning else 0),
             )
             barker_template, gibbs_schema = create_template_and_schema("barker", args)
             barker_gibbs_prior = BarkerGibbsLLMPrior(
                 llm=llm,
+                template=barker_template,
                 burn_in=args.burn_in,
                 thinning=args.thinning * 2,  # *2 because samples can be rejected
+                manual_reasoning=args.manual_reasoning,
                 block_size=args.gibbs_block_size,
                 sweep=args.sweep,
-                manual_reasoning=args.manual_reasoning,
-                template=barker_template,
+            )
+            barker_gibbs_prior.reasoning_prompt = barker_gibbs_prior.reasoning_prompt.replace(
+                "step-by-step", "short"
             )
             barker_samples = barker_gibbs_prior.sample_parallel(
                 gibbs_n_samples // args.n_chains,
@@ -210,7 +237,7 @@ def main(args: argparse.Namespace):
         print("\n--- Running Gambling-Gibbs Sampling ---")
         gambling_out_path = (
             out_dir
-            / f"gambling_gibbs{'_reasoning' if args.manual_reasoning else ''}_sampling_k{args.gibbs_k_vars}_b{args.gibbs_block_size}_nc{args.n_chains}_seed{args.seed}.json"
+            / f"gamblinggibbs{'_reasoning' if args.manual_reasoning else ''}_k{args.gibbs_k_vars}_b{args.gibbs_block_size}_nc{args.n_chains}_seed{args.seed}.json"
         )
         if gambling_out_path.exists():
             print(f"Results already exist at {gambling_out_path}, skipping...")
@@ -223,7 +250,7 @@ def main(args: argparse.Namespace):
                 base_url=args.base_url,
                 system_prompt=system_prompt,
                 temperature=0.0 if not args.manual_reasoning else 1.0,
-                max_tokens=20 if not args.manual_reasoning else 512,
+                max_tokens=20 + (1024 if args.manual_reasoning else 0),
             )
             gambling_template, gibbs_schema = create_template_and_schema("gambling", args)
             gambling_gibbs_prior = GamblingGibbsLLMPrior(
@@ -234,6 +261,9 @@ def main(args: argparse.Namespace):
                 sweep=args.sweep,
                 manual_reasoning=args.manual_reasoning,
                 template=gambling_template,
+            )
+            gambling_gibbs_prior.reasoning_prompt = gambling_gibbs_prior.reasoning_prompt.replace(
+                "step-by-step", "short"
             )
             gambling_samples = gambling_gibbs_prior.sample_parallel(
                 gibbs_n_samples // args.n_chains,

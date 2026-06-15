@@ -12,15 +12,15 @@ RESULTS_DIR = Path(__file__).resolve().parent / "results"
 # method name (as parsed from filenames) and a label template formatted with
 # any named capture groups.
 METHOD_DISPLAY_PATTERNS = [
-    (re.compile(r"^independent_sampling$"), "Independent"),
-    (re.compile(r"^batch_sampling(?:_nc\d+)?$"), "Batch"),
-    (re.compile(r"^gibbs_sampling_k\d+_b(?P<b>\d+)(?:_nc\d+)?$"), "Gibbs (B={b})"),
+    (re.compile(r"^independent(?:_reasoning)?$"), "Independent"),
+    (re.compile(r"^batch(?:_reasoning)?(?:_nc\d+)?$"), "Batch"),
+    (re.compile(r"^gibbs(?:_reasoning)?_k\d+_b(?P<b>\d+)(?:_nc\d+)?$"), "Gibbs (B={b})"),
     (
-        re.compile(r"^barker_gibbs(?:_reasoning)?_sampling_k\d+_b(?P<b>\d+)(?:_nc\d+)?$"),
+        re.compile(r"^barkergibbs(?:_reasoning)?_k\d+_b(?P<b>\d+)(?:_nc\d+)?$"),
         "Barker-Gibbs (B={b})",
     ),
     (
-        re.compile(r"^gambling_gibbs(?:_reasoning)?_sampling_k\d+_b(?P<b>\d+)(?:_nc\d+)?$"),
+        re.compile(r"^gamblinggibbs(?:_reasoning)?_k\d+_b(?P<b>\d+)(?:_nc\d+)?$"),
         "Gambling-Gibbs (B={b})",
     ),
 ]

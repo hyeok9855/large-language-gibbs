@@ -8,7 +8,35 @@ dependencies = [
     "priorbot[remote-llm]",
     "numpy",
     "matplotlib",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+structure-learning = [
+    "pgmpy",
+    "jax>=0.9.1",
+    "flax>=0.12.5",
+    "optax>=0.2.6",
+    "networkx>=3.6.1",
+    "gym>=0.22.0",
+    "dm-haiku",
+    "scikit-learn>=1.7.2",
+    "jraph>=0.0.6.dev0",
+]
+
+structure-learning-cuda12 = [
+    "large-language-gibbs[structure-learning]",
+    "jax[cuda12]>=0.9.1",
+]
+
+structure-learning-cuda13 = [
+    "large-language-gibbs[structure-learning]",
+    "jax[cuda13]>=0.9.1",
 ]
 
 [tool.uv.sources]
-priorbot = { git = "https://github.com/henrygouk/priorbot.git", rev = "8c35bff" }
+priorbot = { git = "https://github.com/henrygouk/priorbot.git", rev = "7d8b14a7ecbdfb0b155b6dc5c6a2cc9820bc2d4b" }
+pgmpy = { git = "https://github.com/pgmpy/pgmpy.git", branch = "dev" }
+
+[tool.black]
+line-length = 100
