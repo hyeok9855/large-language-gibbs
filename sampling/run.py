@@ -37,10 +37,7 @@ def main(args: argparse.Namespace):
         else:
             raise ValueError(f"Invalid target: {args.target}")
 
-        outdir = (
-            outdir
-            / f"{args.model_name.replace('/', '--')}_temp{args.temperature}/n{args.n_samples}"
-        )
+        outdir = outdir / f"{args.model_name.replace('/', '--')}_temp{args.temperature}"
         outdir.mkdir(parents=True, exist_ok=True)
         return outdir
 
@@ -78,7 +75,7 @@ def main(args: argparse.Namespace):
                 manual_reasoning=args.manual_reasoning,
             )
             indep_prior.reasoning_prompt = indep_prior.reasoning_prompt.replace(
-                "step-by-step", "short"
+                "step-by-step", "brief"
             )
             indep_samples = indep_prior.sample_parallel(
                 args.n_samples_per_chain,
@@ -117,7 +114,7 @@ def main(args: argparse.Namespace):
                 manual_reasoning=args.manual_reasoning,
             )
             batch_prior.reasoning_prompt = batch_prior.reasoning_prompt.replace(
-                "step-by-step", "short"
+                "step-by-step", "brief"
             )
             batch_results = batch_prior.sample_parallel(
                 1, [batch_schema] * args.n_chains, verbose=args.verbose, pbar=True
@@ -157,7 +154,7 @@ def main(args: argparse.Namespace):
                 template=gibbs_template,
                 manual_reasoning=args.manual_reasoning,
             )
-            llm_prior.reasoning_prompt = llm_prior.reasoning_prompt.replace("step-by-step", "short")
+            llm_prior.reasoning_prompt = llm_prior.reasoning_prompt.replace("step-by-step", "brief")
             gibbs_prior = GibbsLLMPrior(
                 llm_prior=llm_prior,
                 burn_in=args.burn_in,
@@ -214,7 +211,7 @@ def main(args: argparse.Namespace):
                 sweep=args.sweep,
             )
             barker_gibbs_prior.reasoning_prompt = barker_gibbs_prior.reasoning_prompt.replace(
-                "step-by-step", "short"
+                "step-by-step", "brief"
             )
             barker_samples = barker_gibbs_prior.sample_parallel(
                 gibbs_n_samples // args.n_chains,
@@ -263,7 +260,7 @@ def main(args: argparse.Namespace):
                 template=gambling_template,
             )
             gambling_gibbs_prior.reasoning_prompt = gambling_gibbs_prior.reasoning_prompt.replace(
-                "step-by-step", "short"
+                "step-by-step", "brief"
             )
             gambling_samples = gambling_gibbs_prior.sample_parallel(
                 gibbs_n_samples // args.n_chains,
