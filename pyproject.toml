@@ -1,0 +1,14 @@
+[project]
+name = "large-language-gibbs"
+version = "0.1.0"
+description = "Structured Inference with Large Language Gibbs"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "priorbot[remote-llm]",
+    "numpy",
+    "matplotlib",
+]
+
+[tool.uv.sources]
+priorbot = { git = "https://github.com/henrygouk/priorbot.git", rev = "fa6bc9" }
