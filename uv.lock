@@ -247,7 +247,7 @@ dependencies = [
 requires-dist = [
     { name = "matplotlib" },
     { name = "numpy" },
-    { name = "priorbot", extras = ["remote-llm"], git = "https://github.com/henrygouk/priorbot.git?rev=fa6bc9" },
+    { name = "priorbot", extras = ["remote-llm"], git = "https://github.com/henrygouk/priorbot.git?rev=8c35bff" },
 ]
 
 [[package]]
@@ -413,7 +413,7 @@ wheels = [
 [[package]]
 name = "priorbot"
 version = "0.2.0"
-source = { git = "https://github.com/henrygouk/priorbot.git?rev=fa6bc9#fa6bc997ee12ae6e5f5dc45417df8e224b420210" }
+source = { git = "https://github.com/henrygouk/priorbot.git?rev=8c35bff#8c35bfffbd6f0b0912ff0e7ba17cda18986b64ee" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },

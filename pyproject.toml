@@ -11,4 +11,4 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-priorbot = { git = "https://github.com/henrygouk/priorbot.git", rev = "fa6bc9" }
+priorbot = { git = "https://github.com/henrygouk/priorbot.git", rev = "8c35bff" }

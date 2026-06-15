@@ -16,3 +16,12 @@ First, run the following command to install the dependencies (this will automati
 ```bash
 uv sync
 ```
+
+## Experiments
+We have three sets of experiments:
+
+1. Sampling from simple distributions (§4)
+2. Consistent reasoning (§5.1)
+3. Bayesian structure learning (§5.2)
+
+See README.md in each subdirectory for more details.
