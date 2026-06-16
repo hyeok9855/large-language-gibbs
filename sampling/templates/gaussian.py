@@ -1,14 +1,8 @@
-import sys
-import os
-
-# Add root/sampling to PYTHONPATH
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import json
 from argparse import Namespace
 from typing import Any, Callable
 
-from utils import round_dict
+from sampling.utils import round_dict
 
 
 def create_template_and_schema(

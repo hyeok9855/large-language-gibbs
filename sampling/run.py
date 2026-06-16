@@ -1,9 +1,3 @@
-import sys
-import os
-
-# Add root/sampling to PYTHONPATH
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
 import argparse
 import json
 import random
@@ -15,15 +9,15 @@ from priorbot.priors import (
     GibbsLLMPrior,
     LLMPrior,
 )
-from utils import MODEL_NAME_TO_TYPE, RESULTS_DIR
+from sampling.utils import MODEL_NAME_TO_TYPE, RESULTS_DIR
 
 
 def main(args: argparse.Namespace):
 
     if args.target == "uniform":
-        from templates.uniform import create_template_and_schema
+        from sampling.templates.uniform import create_template_and_schema
     elif args.target == "gaussian":
-        from templates.gaussian import create_template_and_schema
+        from sampling.templates.gaussian import create_template_and_schema
     else:
         raise ValueError(f"Invalid target: {args.target}")
 
