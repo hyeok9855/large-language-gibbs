@@ -6,28 +6,6 @@ canonical way to format the system prompt, dataset description, and feature
 description block.
 """
 
-from pathlib import Path
-from typing import Any
-import json
-
-import numpy as np
-
-
-MODEL_NAME_TO_TYPE: dict[str, str] = {
-    "meta-llama/Llama-3.1-8B": "base",
-    "meta-llama/Llama-3.1-8B-Instruct": "instruct",
-    "meta-llama/Llama-3.1-70B": "base",
-    "meta-llama/Llama-3.1-70B-Instruct": "instruct",
-    "allenai/Olmo-3-1125-32B": "base",
-    "allenai/Olmo-3-32B-Think": "instruct",
-}
-
-
-def load_meta(path: Path | str) -> dict:
-    """Load a dataset's `meta_data.json`."""
-    with open(path) as f:
-        return json.load(f)
-
 
 def build_system_prompt(meta: dict, task_description: str) -> str:
     """Build the system prompt for an instruction-tuned LLM.

@@ -11,22 +11,14 @@ import numpy as np
 import pandas as pd
 
 from priorbot.llm import OpenAICompatLLM
-from priorbot.priors import (
-    BarkerLLMPrior,
-    BarkerGibbsLLMPrior,
-    GamblingLLMPrior,
-    GamblingGibbsLLMPrior,
-    GibbsLLMPrior,
-    LLMPrior,
-)
+from priorbot.priors import BarkerGibbsLLMPrior, GamblingGibbsLLMPrior, GibbsLLMPrior, LLMPrior
 
 from structure_learning.utils.prompt_utils import (
-    MODEL_NAME_TO_TYPE,
     build_system_prompt,
     get_dataset_description,
     get_feature_description,
-    load_meta,
 )
+from structure_learning.utils.misc_utils import DATASETS_DIR, MODEL_NAME_TO_TYPE, load_meta
 
 
 def build_schema(meta: dict) -> dict:
@@ -38,26 +30,18 @@ def build_schema(meta: dict) -> dict:
 
 
 def main(args: Namespace) -> None:
-    dataset_meta_path = Path(f"structure_learning/datasets/{args.dataset_name}/meta_data.json")
-    llm_output_dir = Path(f"structure_learning/datasets/{args.dataset_name}/llm_data")
+    dataset_meta_path = DATASETS_DIR / args.dataset_name / "meta_data.json"
+    llm_output_dir = DATASETS_DIR / args.dataset_name / "llm_data"
 
     llm_output_dir.mkdir(parents=True, exist_ok=True)
 
     meta = load_meta(dataset_meta_path)
     n_features = len(meta["features"])
-    if args.v2:
-        if args.thinning is None:
-            args.thinning = math.ceil((n_features * 2) / args.block_size)
-        if args.burn_in is None:
-            args.burn_in = min(1000, 10 * args.thinning)
-        args.sweep = True
-    else:
-        if args.thinning is None:
-            args.thinning = math.ceil(
-                (n_features * (1 if args.manual_reasoning else 2)) / args.block_size
-            )
-        if args.burn_in is None:
-            args.burn_in = min(1000, (10 if args.manual_reasoning else 50) * args.thinning)
+
+    if args.thinning is None:
+        args.thinning = math.ceil((n_features * 2) / args.block_size)
+    if args.burn_in is None:
+        args.burn_in = min(1000, 10 * args.thinning)
 
     schema = build_schema(meta)
     system_prompt = (
@@ -78,7 +62,7 @@ def main(args: Namespace) -> None:
     if args.model_type == "base":
         llm._use_chat_api = False
 
-    match args.prior:
+    match args.sampling_method:
         case "direct" | "gibbs":
 
             def llm_template(schema: dict[str, Any], observed: dict[str, Any] | None = None) -> str:
@@ -109,16 +93,15 @@ def main(args: Namespace) -> None:
                         generation_prompt = (
                             f"Generate a data point according to the following schema: {schema_str}"
                         )
-                        return f"{dataset_description}\n{feature_description}\n{generation_prompt}"
+                    return f"{dataset_description}\n{feature_description}\n{generation_prompt}"
 
             llm_prior = LLMPrior(
                 llm=llm,
                 template=llm_template,
                 manual_reasoning=args.manual_reasoning,
-                v2=args.v2,
             )
 
-            if args.prior == "direct":
+            if args.sampling_method == "direct":
                 prior = llm_prior
             else:  # gibbs
                 prior = GibbsLLMPrior(
@@ -129,7 +112,7 @@ def main(args: Namespace) -> None:
                     sweep=args.sweep,
                 )
 
-        case "barker" | "barker_gibbs":
+        case "barker_gibbs":
 
             def barker_template(
                 option1: dict[str, Any],
@@ -163,28 +146,17 @@ def main(args: Namespace) -> None:
                     f"Respond with JSON that follows this schema: {output_schema_str}."
                 )
 
-            if args.prior == "barker":
-                prior = BarkerLLMPrior(
-                    llm=llm,
-                    burn_in=args.burn_in,
-                    thinning=args.thinning,
-                    template=barker_template,
-                    manual_reasoning=args.manual_reasoning,
-                    v2=args.v2,
-                )
-            else:  # barker_gibbs
-                prior = BarkerGibbsLLMPrior(
-                    llm=llm,
-                    burn_in=args.burn_in,
-                    thinning=args.thinning,
-                    block_size=args.block_size,
-                    sweep=args.sweep,
-                    template=barker_template,
-                    manual_reasoning=args.manual_reasoning,
-                    v2=args.v2,
-                )
+            prior = BarkerGibbsLLMPrior(
+                llm=llm,
+                template=barker_template,
+                burn_in=args.burn_in,
+                thinning=args.thinning,
+                block_size=args.block_size,
+                sweep=args.sweep,
+                manual_reasoning=args.manual_reasoning,
+            )
 
-        case "gambling" | "gambling_gibbs":
+        case "gambling_gibbs":
 
             assert args.model_type == "instruct", "Gambling prior only supports instruct LLM type"
 
@@ -222,28 +194,17 @@ def main(args: Namespace) -> None:
                     f"Respond with JSON that follows this schema: {output_schema_str}."
                 )
 
-            if args.prior == "gambling":
-                prior = GamblingLLMPrior(
-                    llm=llm,
-                    burn_in=args.burn_in,
-                    thinning=args.thinning,
-                    template=gambling_template,
-                    manual_reasoning=args.manual_reasoning,
-                    v2=args.v2,
-                )
-            else:  # gambling_gibbs
-                prior = GamblingGibbsLLMPrior(
-                    llm=llm,
-                    burn_in=args.burn_in,
-                    thinning=args.thinning,
-                    block_size=args.block_size,
-                    sweep=args.sweep,
-                    template=gambling_template,
-                    manual_reasoning=args.manual_reasoning,
-                    v2=args.v2,
-                )
+            prior = GamblingGibbsLLMPrior(
+                llm=llm,
+                template=gambling_template,
+                burn_in=args.burn_in,
+                thinning=args.thinning,
+                block_size=args.block_size,
+                sweep=args.sweep,
+                manual_reasoning=args.manual_reasoning,
+            )
         case _:
-            raise ValueError(f"Invalid prior type: {args.prior}")
+            raise ValueError(f"Invalid sampling method: {args.sampling_method}")
 
     # Sampling
     n_samples_per_chain = (args.n_samples // args.n_chains) + (
@@ -265,46 +226,34 @@ def main(args: Namespace) -> None:
         df = df.rename(columns={"C#": "C"})
 
     # Saving
-    run_name = (
-        f"{args.model_name.replace('/', '--')}_{args.prior}_temp{args.temperature}_topp{args.top_p}"
-    )
-    if args.prior != "direct":
+    run_name = f"{args.model_name.replace('/', '--')}_{args.sampling_method}_temp{args.temperature}_topp{args.top_p}"
+    if args.sampling_method != "direct":
         run_name += f"_burnin{args.burn_in}_thinning{args.thinning}"
 
     # Only tag non-default block / sweep settings so vanilla Gibbs filenames remain
     # unchanged and existing results are not shadowed by new block/sweep runs.
-    if "gibbs" in args.prior:
+    if "gibbs" in args.sampling_method:
         if args.block_size != 1:
             run_name += f"_block{args.block_size}"
-        if args.sweep:
-            run_name += "_sweep"
     if args.manual_reasoning:
         run_name += "_reasoning"
-    run_name += f"_n{args.n_samples}"
-
-    # Check if the run name already exists
-    suffix = 1
-    while (llm_output_dir / f"{run_name}_{suffix}.csv").exists():
-        suffix += 1
-    run_name = f"{run_name}_{suffix}"
+    run_name += f"_n{args.n_samples}_sd{args.seed}"
 
     df.to_csv(llm_output_dir / f"{run_name}.csv", index=False)
     print(f"Saved {len(df)} samples to {llm_output_dir / run_name}")
 
 
 if __name__ == "__main__":
-    parser = ArgumentParser(
-        description="Generate LLM prior data for the Sachs dataset using priorbot."
-    )
+    parser = ArgumentParser(description="Generate LLM prior data using priorbot.")
     parser.add_argument("--dataset_name", type=str, required=True)
     parser.add_argument("--model_name", type=str, required=True)
     parser.add_argument("--base_url", type=str, default=None)
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--api_key", type=str, default="NOT_A_KEY")
     parser.add_argument(
-        "--prior",
+        "--sampling_method",
         type=str,
-        choices=["direct", "gibbs", "barker", "barker_gibbs", "gambling", "gambling_gibbs"],
+        choices=["direct", "gibbs", "barker_gibbs", "gambling_gibbs"],
         default="gibbs",
     )
     parser.add_argument("--n_chains", type=int, default=1)
@@ -313,29 +262,14 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", type=float, default=1.0)
     parser.add_argument("--burn_in", type=int, default=None)
     parser.add_argument("--thinning", type=int, default=None)
+    parser.add_argument("--block_size", type=int, default=1, help="Block size for Gibbs sampling.")
     parser.add_argument(
-        "--block_size",
-        type=int,
-        default=1,
-        help=(
-            "Number of variables jointly resampled at each Gibbs step. "
-            "Only used for gibbs / barker_gibbs / gambling_gibbs priors."
-        ),
-    )
-    parser.add_argument(
-        "--sweep",
-        action="store_true",
-        default=False,
-        help=(
-            "Cycle through all variables in (shuffled) order instead of picking "
-            "uniformly at random each step. Only used for gibbs-family priors."
-        ),
+        "--no_sweep", dest="sweep", action="store_false", help="Disable sweep for Gibbs sampling."
     )
     parser.add_argument("--manual_reasoning", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--no_pbar", dest="pbar", action="store_false", default=True)
-    parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--v2", action="store_true", default=False)
+    parser.add_argument("--seed", type=int, required=True)
     args = parser.parse_args()
 
     if args.base_url is None:

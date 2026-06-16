@@ -2,8 +2,6 @@ from pathlib import Path
 
 DATASETS_DIR = Path(__file__).parent.parent / "datasets"
 
-V2 = True
-
 EXCLUDE = {
     "bnrep_bullet",
     "bnrep_wheat",
@@ -30,7 +28,7 @@ INSTRUCT_MODELS = [
 
 
 # Known file-naming patterns derived from bnrep_knowledge (complete case).
-# suffix convention: _n200_{run}.csv (run in 1,2,3)
+# seed convention: _n200_sd{seed}.csv (seeds 1,2,3)
 GIBBS_TEMPS = ["1.0"]
 DIRECT_TEMPS = ["1.0"]
 REASONING = ["", "_reasoning"]
@@ -42,150 +40,68 @@ def direct_name(model, temp, reasoning):
 
 
 def gibbs_name(model, burnin, thinning, temp, block_size, reasoning):
-    block = ""
-    sweep = ""
-    if V2:
-        block = f"_block{block_size}" if block_size > 1 else ""
-        sweep = "_sweep"
-    return f"{model}_gibbs_temp{temp}_topp1.0_burnin{burnin}_thinning{thinning}{block}{sweep}{reasoning}_n200"
+    block = f"_block{block_size}" if block_size > 1 else ""
+    return (
+        f"{model}_gibbs_temp{temp}_topp1.0_burnin{burnin}_thinning{thinning}{block}{reasoning}_n200"
+    )
 
 
 def barker_name(model, burnin, thinning, block_size, reasoning):
-    block = ""
-    sweep = ""
-    if V2:
-        block = f"_block{block_size}" if block_size > 1 else ""
-        sweep = "_sweep"
-    return f"{model}_barker_temp1.0_topp1.0_burnin{burnin}_thinning{thinning}{block}{sweep}{reasoning}_n200"
+    block = f"_block{block_size}" if block_size > 1 else ""
+    return (
+        f"{model}_barker_temp1.0_topp1.0_burnin{burnin}_thinning{thinning}{block}{reasoning}_n200"
+    )
 
 
 def barker_gibbs_name(model, burnin, thinning, block_size, reasoning):
-    block = ""
-    sweep = ""
-    if V2:
-        block = f"_block{block_size}" if block_size > 1 else ""
-        sweep = "_sweep"
-    return f"{model}_barker_gibbs_temp1.0_topp1.0_burnin{burnin}_thinning{thinning}{block}{sweep}{reasoning}_n200"
+    block = f"_block{block_size}" if block_size > 1 else ""
+    return f"{model}_barker_gibbs_temp1.0_topp1.0_burnin{burnin}_thinning{thinning}{block}{reasoning}_n200"
 
 
 def gambling_name(model, burnin, thinning, block_size, reasoning):
-    block = ""
-    sweep = ""
-    if V2:
-        block = f"_block{block_size}" if block_size > 1 else ""
-        sweep = "_sweep"
-    return f"{model}_gambling_temp0.0_topp1.0_burnin{burnin}_thinning{thinning}{block}{sweep}{reasoning}_n200"
+    block = f"_block{block_size}" if block_size > 1 else ""
+    return (
+        f"{model}_gambling_temp0.0_topp1.0_burnin{burnin}_thinning{thinning}{block}{reasoning}_n200"
+    )
 
 
 def gambling_gibbs_name(model, burnin, thinning, block_size, reasoning):
     temp = 0.0
     if reasoning:
         temp = 1.0
-    block = ""
-    sweep = ""
-    if V2:
-        block = f"_block{block_size}" if block_size > 1 else ""
-        sweep = "_sweep"
-    return f"{model}_gambling_gibbs_temp{temp}_topp1.0_burnin{burnin}_thinning{thinning}{block}{sweep}{reasoning}_n200"
+    block = f"_block{block_size}" if block_size > 1 else ""
+    return f"{model}_gambling_gibbs_temp{temp}_topp1.0_burnin{burnin}_thinning{thinning}{block}{reasoning}_n200"
 
 
 def get_burnin_thinning(ds_name: str, block_size: int, reasoning: str):
     # Fetch burnin and thinning
     if ds_name == "bnrep_algalactivity2":
-        if V2:
-            burnin = 160
-            thinning = 16
-        else:
-            if reasoning:
-                burnin = 80
-                thinning = 8
-            else:
-                burnin = 800
-                thinning = 16
-    elif ds_name == "bnrep_compaction":
-        if V2:
-            burnin = 120
-            thinning = 12
-        else:
-            if reasoning:
-                burnin = 60
-                thinning = 6
-            else:
-                burnin = 600
-                thinning = 12
+        burnin = 160
+        thinning = 16
     elif ds_name == "bnrep_consequenceCovid":
-        if V2:
+        if block_size == 1:
             burnin = 300
             thinning = 30
-            if block_size > 1:
-                if block_size == 4:
-                    burnin = 80
-                    thinning = 8
-                elif block_size == 2:
-                    burnin = 150
-                    thinning = 15
-                else:
-                    raise ValueError(f"Unknown block size: {block_size}")
+        if block_size == 2:
+            burnin = 150
+            thinning = 15
         else:
-            if reasoning:
-                burnin = 150
-                thinning = 15
-            else:
-                burnin = 1000
-                thinning = 30
+            raise ValueError(f"Unknown block size: {block_size}")
     elif ds_name == "bnrep_disputed1":
-        if V2:
+        if block_size == 1:
             burnin = 220
             thinning = 22
-            if block_size > 1:
-                if block_size == 4:
-                    burnin = 60
-                    thinning = 6
-                elif block_size == 2:
-                    burnin = 110
-                    thinning = 11
-                else:
-                    raise ValueError(f"Unknown block size: {block_size}")
+        elif block_size == 2:
+            burnin = 110
+            thinning = 11
         else:
-            if reasoning:
-                burnin = 110
-                thinning = 11
-            else:
-                burnin = 1000
-                thinning = 22
+            raise ValueError(f"Unknown block size: {block_size}")
     elif ds_name == "bnrep_knowledge":
-        if V2:
-            burnin = 120
-            thinning = 12
-        else:
-            if reasoning:
-                burnin = 60
-                thinning = 6
-            else:
-                burnin = 600
-                thinning = 12
-    elif ds_name == "bnrep_rockburst":
-        if V2:
-            burnin = 120
-            thinning = 12
-        else:
-            if reasoning:
-                burnin = 60
-                thinning = 6
-            else:
-                burnin = 600
-                thinning = 12
+        burnin = 120
+        thinning = 12
     elif ds_name == "bnrep_tubercolosis":
-        if V2:
-            burnin = 100
-            thinning = 10
-        else:
-            if reasoning:
-                burnin = 50
-                thinning = 5
-            else:
-                burnin = 500
-                thinning = 10
+        burnin = 100
+        thinning = 10
     else:
         raise ValueError(f"Unknown dataset: {ds_name}")
 
@@ -258,16 +174,16 @@ def check_dataset(ds_dir: Path):
 
     missing = []
     for tag, base in expected_bases(ds_dir.name):
-        for run in (1, 2, 3):
-            fname = f"{base}_{run}.csv"
+        for seed in (1, 2, 3):
+            fname = f"{base}_sd{seed}.csv"
             if fname not in existing:
                 missing.append(fname)
 
     # extras: any files not matching expected
     expected_all = set()
     for tag, base in expected_bases(ds_dir.name):
-        for run in (1, 2, 3):
-            expected_all.add(f"{base}_{run}.csv")
+        for seed in (1, 2, 3):
+            expected_all.add(f"{base}_sd{seed}.csv")
     extras = sorted(f for f in existing if f not in expected_all)
 
     return {"missing_dir": False, "missing": missing, "extras": extras}
@@ -277,8 +193,6 @@ def main():
     datasets = sorted(p for p in DATASETS_DIR.iterdir() if p.is_dir() and p.name not in EXCLUDE)
 
     for ds in datasets:
-        if "sachs" in ds.name:
-            continue
         res = check_dataset(ds)
         if res["missing_dir"]:
             print(f"=== {ds.name} ===  NO llm_data directory")
@@ -287,20 +201,20 @@ def main():
         status = "OK" if not res["missing"] else f"MISSING {len(res['missing'])}"
         print(f"=== {ds.name} === {status}")
         if res["missing"]:
-            # Group missing by base (strip _N.csv)
+            # Group missing by base (strip _sdN.csv)
             from collections import defaultdict
 
             groups = defaultdict(list)
             for f in res["missing"]:
-                base = f.rsplit("_", 1)[0]
-                run = f.rsplit("_", 1)[1].replace(".csv", "")
-                groups[base].append(run)
-            for base, runs in sorted(groups.items()):
-                runs_str = ",".join(sorted(runs))
-                if runs_str == "1,2,3":
-                    print(f"  MISSING ALL RUNS: {base}")
+                base = f.rsplit("_sd", 1)[0]
+                seed = f.rsplit("_sd", 1)[1].replace(".csv", "")
+                groups[base].append(seed)
+            for base, seeds in sorted(groups.items()):
+                seeds_str = ",".join(sorted(seeds))
+                if seeds_str == "1,2,3":
+                    print(f"  MISSING ALL SEEDS: {base}")
                 else:
-                    print(f"  MISSING runs {runs_str}: {base}")
+                    print(f"  MISSING seeds {seeds_str}: {base}")
         if res["extras"]:
             print(f"  (extras not in spec: {len(res['extras'])} files)")
         print()
