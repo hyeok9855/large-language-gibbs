@@ -21,7 +21,7 @@ else
     REASONING_FLAG=""
 fi
 
-COMMON_ARGS="--target $TARGET --model-name $MODEL --port $PORT $REASONING_FLAG"
+COMMON_ARGS="--target $TARGET --model_name $MODEL --port $PORT $REASONING_FLAG"
 
 launch() {
     python run.py "$@" &

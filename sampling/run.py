@@ -289,12 +289,12 @@ if __name__ == "__main__":
         default="gaussian",
         choices=["gaussian", "uniform"],  # uniform is discrete
     )
-    parser.add_argument("--model-name", type=str, default="meta-llama/Llama-3.1-8B")
+    parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B")
     parser.add_argument(
-        "--base-url", type=str, default=None, help="Base URL for OpenAI compatible API."
+        "--base_url", type=str, default=None, help="Base URL for OpenAI compatible API."
     )
     parser.add_argument("--port", type=int, default=None)
-    parser.add_argument("--api-key", type=str, default="NOT_A_KEY")
+    parser.add_argument("--api_key", type=str, default="NOT_A_KEY")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n_samples", type=int, default=256)
 
@@ -339,7 +339,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.base_url is None:
-        assert args.port is not None, "Either base-url or port must be provided."
+        assert args.port is not None, "Either base_url or port must be provided."
         args.base_url = f"http://localhost:{args.port}/v1"
 
     os.environ["OPENAI_API_KEY"] = args.api_key
