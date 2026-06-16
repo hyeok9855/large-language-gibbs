@@ -261,9 +261,7 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
             ax.set_xlim(0, maxnum)
         elif target_name == "gaussian":
             x_vals = np.linspace(mean - 4 * std, mean + 4 * std, 200)
-            y_vals = (1 / (std * np.sqrt(2 * np.pi))) * np.exp(
-                -0.5 * ((x_vals - mean) / std) ** 2
-            )
+            y_vals = (1 / (std * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x_vals - mean) / std) ** 2)
             ax.plot(x_vals, y_vals, color="r", linestyle="--", label="True Gaussian")
             ax.set_xlim(mean - 4 * std, mean + 4 * std)
 
@@ -303,44 +301,38 @@ def plot_result_dir(target_name, data_dir, params, ignore_unknown_methods=False)
         if not model_dir.is_dir():
             continue
 
-        for exp_dir in model_dir.iterdir():
-            if not exp_dir.is_dir():
+        method_data = {}
+        for filepath in model_dir.glob("*.json"):
+
+            method, seed = parse_filename(filepath)
+            if method == "Unknown" or seed is None:
+                continue
+            if ignore_unknown_methods and not matches_method_display_pattern(method):
+                print(f"Skipping run with unrecognized method {method} from {filepath}.")
                 continue
 
-            method_data = {}
+            with open(filepath, "r") as f:
+                data = json.load(f)
 
-            for filepath in exp_dir.glob("*.json"):
-                method, seed = parse_filename(filepath)
-                if method == "Unknown" or seed is None:
-                    continue
-                if ignore_unknown_methods and not matches_method_display_pattern(method):
-                    print(f"Skipping run with unrecognized method {method} from {filepath}.")
-                    continue
+            if method not in method_data:
+                method_data[method] = {}
+            if seed not in method_data[method]:
+                method_data[method][seed] = []
+            method_data[method][seed].extend(data)
 
-                with open(filepath, "r") as f:
-                    data = json.load(f)
+        reasoning_data = {
+            method: seeds for method, seeds in method_data.items() if is_reasoning_method(method)
+        }
+        sampling_data = {
+            method: seeds
+            for method, seeds in method_data.items()
+            if not is_reasoning_method(method)
+        }
 
-                if method not in method_data:
-                    method_data[method] = {}
-                if seed not in method_data[method]:
-                    method_data[method][seed] = []
-                method_data[method][seed].extend(data)
-
-            reasoning_data = {
-                method: seeds
-                for method, seeds in method_data.items()
-                if is_reasoning_method(method)
-            }
-            sampling_data = {
-                method: seeds
-                for method, seeds in method_data.items()
-                if not is_reasoning_method(method)
-            }
-
-            if sampling_data:
-                plot_exp_dir(target_name, exp_dir, params, sampling_data)
-            if reasoning_data:
-                plot_exp_dir(target_name, exp_dir, params, reasoning_data, plot_suffix="_reasoning")
+        if sampling_data:
+            plot_exp_dir(target_name, model_dir, params, sampling_data)
+        if reasoning_data:
+            plot_exp_dir(target_name, model_dir, params, reasoning_data, plot_suffix="_reasoning")
 
 
 if __name__ == "__main__":

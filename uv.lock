@@ -639,7 +639,7 @@ requires-dist = [
     { name = "networkx", marker = "extra == 'structure-learning'", specifier = ">=3.6.1" },
     { name = "numpy" },
     { name = "optax", marker = "extra == 'structure-learning'", specifier = ">=0.2.6" },
-    { name = "pgmpy", marker = "extra == 'structure-learning'", git = "https://github.com/pgmpy/pgmpy.git?branch=dev" },
+    { name = "pgmpy", marker = "extra == 'structure-learning'", git = "https://github.com/pgmpy/pgmpy.git?rev=4c2cdb9c6a28e322c489c7e1eeff704536256a8a" },
     { name = "priorbot", extras = ["remote-llm"], git = "https://github.com/henrygouk/priorbot.git?rev=7d8b14a7ecbdfb0b155b6dc5c6a2cc9820bc2d4b" },
     { name = "scikit-learn", marker = "extra == 'structure-learning'", specifier = ">=1.7.2" },
     { name = "tqdm" },
@@ -1216,7 +1216,7 @@ wheels = [
 [[package]]
 name = "pgmpy"
 version = "1.1.2"
-source = { git = "https://github.com/pgmpy/pgmpy.git?branch=dev#4c2cdb9c6a28e322c489c7e1eeff704536256a8a" }
+source = { git = "https://github.com/pgmpy/pgmpy.git?rev=4c2cdb9c6a28e322c489c7e1eeff704536256a8a#4c2cdb9c6a28e322c489c7e1eeff704536256a8a" }
 dependencies = [
     { name = "huggingface-hub" },
     { name = "joblib" },

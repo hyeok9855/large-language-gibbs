@@ -36,7 +36,7 @@ structure-learning-cuda13 = [
 
 [tool.uv.sources]
 priorbot = { git = "https://github.com/henrygouk/priorbot.git", rev = "7d8b14a7ecbdfb0b155b6dc5c6a2cc9820bc2d4b" }
-pgmpy = { git = "https://github.com/pgmpy/pgmpy.git", branch = "dev" }
+pgmpy = { git = "https://github.com/pgmpy/pgmpy.git", rev = "4c2cdb9c6a28e322c489c7e1eeff704536256a8a" }
 
 [tool.black]
 line-length = 100
