@@ -1,0 +1,101 @@
+AgeGroup,Gender,Location,TreatmentOutcome,Tubercolosis
+0 to 35,Male,Ehlanzeni,Died,Pulmonary
+35 to 65,Femal,Nkangala,Alive,Pulmonary
+35 to 65,Male,Nkangala,Alive,Pulmonary
+35 to 65,Male,Ehlanzeni,Died,Pulmonary
+0 to 35,Femal,Ehlanzeni,Died,Pulmonary
+0 to 35,Male,Nkangala,Alive,Pulmonary
+0 to 35,Male,Nkangala,Alive,Pulmonary
+35 to 65,Femal,Ehlanzeni,Alive,Pulmonary
+35 to 65,Male,Nkangala,Alive,Pulmonary
+35 to 65,Male,Nkangala,Alive,Pulmonary
+0 to 35,Male,Ehlanzeni,Alive,Pulmonary
+35 to 65,Male,Ehlanzeni,Alive,Pulmonary
+35 to 65,Femal,Ehlanzeni,Alive,Pulmonary
+0 to 35,Femal,Nkangala,Alive,Pulmonary
+0 to 35,Femal,Ehlanzeni,Alive,Pulmonary
+0 to 35,Femal,Nkangala,Alive,Pulmonary
+0 to 35,Femal,Gert Sibande,Alive,Pulmonary
+35 to 65,Male,Ehlanzeni,Alive,Pulmonary
+0 to 35,Femal,Ehlanzeni,Alive,Pulmonary
+0 to 35,Femal,Ehlanzeni,Died,Pulmonary
+35 to 65,Femal,Ehlanzeni,Alive,Pulmonary
+0 to 35,Femal,Ehlanzeni,Alive,Pulmonary
+0 to 35,Male,Nkangala,Alive,Pulmonary
+0 to 35,Male,Gert Sibande,Alive,Pulmonary
+0 to 35,Male,Nkangala,Alive,Pulmonary
+35 to 65,Male,Nkangala,Alive,ExtraPulmonary
+0 to 35,Femal,Ehlanzeni,Alive,Pulmonary
+35 to 65,Femal,Gert Sibande,Alive,Pulmonary
+35 to 65,Male,Ehlanzeni,Alive,Pulmonary
+0 to 35,Male,Ehlanzeni,Alive,Pulmonary
+35 to 65,Male,Ehlanzeni,Alive,Pulmonary
+0 to 35,Male,Gert Sibande,Alive,Pulmonary
+0 to 35,Male,Ehlanzeni,Alive,Pulmonary
+35 to 65,Male,Gert Sibande,Alive,Pulmonary
+35 to 65,Femal,Nkangala,Died,Pulmonary
+35 to 65,Male,Ehlanzeni,Alive,Pulmonary
+0 to 35,Male,Nkangala,Alive,Pulmonary
+0 to 35,Femal,Nkangala,Alive,Pulmonary
+35 to 65,Male,Ehlanzeni,Died,Pulmonary
+0 to 35,Femal,Nkangala,Died,Pulmonary
+0 to 35,Femal,Ehlanzeni,Alive,Pulmonary
+0 to 35,Male,Ehlanzeni,Alive,Pulmonary
+0 to 35,Male,Ehlanzeni,Alive,Pulmonary
+35 to 65,Male,Gert Sibande,Alive,Pulmonary
+0 to 35,Male,Nkangala,Died,ExtraPulmonary
+35 to 65,Male,Ehlanzeni,Alive,Pulmonary
+0 to 35,Femal,Gert Sibande,Alive,Pulmonary
+35 to 65,Male,Ehlanzeni,Died,Pulmonary
+35 to 65,Male,Ehlanzeni,Alive,Pulmonary
+0 to 35,Male,Ehlanzeni,Alive,ExtraPulmonary
+35 to 65,Femal,Gert Sibande,Alive,Pulmonary
+35 to 65,Male,Gert Sibande,Alive,Pulmonary
+35 to 65,Male,Ehlanzeni,Alive,Pulmonary
+35 to 65,Male,Gert Sibande,Alive,Pulmonary
+35 to 65,Femal,Nkangala,Alive,Pulmonary
+35 to 65,Male,Ehlanzeni,Alive,Pulmonary
+0 to 35,Femal,Ehlanzeni,Alive,Pulmonary
+0 to 35,Femal,Ehlanzeni,Alive,ExtraPulmonary
+0 to 35,Male,Ehlanzeni,Alive,Pulmonary
+0 to 35,Femal,Nkangala,Alive,Pulmonary
+0 to 35,Male,Ehlanzeni,Died,Pulmonary
+0 to 35,Femal,Ehlanzeni,Alive,Pulmonary
+35 to 65,Femal,Nkangala,Alive,Pulmonary
+0 to 35,Male,Gert Sibande,Died,Pulmonary
+0 to 35,Male,Ehlanzeni,Alive,Pulmonary
+35 to 65,Femal,Ehlanzeni,Died,Pulmonary
+0 to 35,Male,Ehlanzeni,Alive,Pulmonary
+35 to 65,Male,Ehlanzeni,Died,Pulmonary
+0 to 35,Male,Gert Sibande,Alive,Pulmonary
+More than 65,Femal,Gert Sibande,Died,Pulmonary
+35 to 65,Femal,Ehlanzeni,Alive,Pulmonary
+0 to 35,Male,Ehlanzeni,Died,Pulmonary
+0 to 35,Male,Ehlanzeni,Alive,ExtraPulmonary
+35 to 65,Male,Ehlanzeni,Alive,Pulmonary
+35 to 65,Femal,Gert Sibande,Alive,Pulmonary
+35 to 65,Male,Gert Sibande,Died,Pulmonary
+35 to 65,Femal,Ehlanzeni,Alive,Pulmonary
+0 to 35,Male,Ehlanzeni,Alive,Pulmonary
+0 to 35,Femal,Ehlanzeni,Alive,Pulmonary
+0 to 35,Male,Ehlanzeni,Died,ExtraPulmonary
+35 to 65,Male,Ehlanzeni,Alive,Pulmonary
+35 to 65,Male,Gert Sibande,Alive,Pulmonary
+0 to 35,Femal,Gert Sibande,Alive,Pulmonary
+0 to 35,Femal,Nkangala,Died,Pulmonary
+0 to 35,Male,Ehlanzeni,Alive,ExtraPulmonary
+0 to 35,Femal,Nkangala,Alive,Pulmonary
+35 to 65,Femal,Gert Sibande,Alive,Pulmonary
+35 to 65,Femal,Ehlanzeni,Alive,ExtraPulmonary
+35 to 65,Male,Gert Sibande,Died,Pulmonary
+0 to 35,Male,Ehlanzeni,Died,Pulmonary
+0 to 35,Male,Nkangala,Alive,Pulmonary
+35 to 65,Femal,Nkangala,Alive,Pulmonary
+35 to 65,Femal,Ehlanzeni,Alive,Pulmonary
+35 to 65,Femal,Gert Sibande,Alive,Pulmonary
+35 to 65,Male,Nkangala,Alive,Pulmonary
+0 to 35,Male,Gert Sibande,Alive,Pulmonary
+35 to 65,Femal,Ehlanzeni,Alive,Pulmonary
+0 to 35,Femal,Nkangala,Alive,Pulmonary
+0 to 35,Femal,Ehlanzeni,Died,Pulmonary
+0 to 35,Femal,Nkangala,Died,Pulmonary

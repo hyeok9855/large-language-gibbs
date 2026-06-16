@@ -1,0 +1,101 @@
+AGE,LIFESAT,TRUST,SATMEAS,HEALTH,JUSTIFIED,PERSONALFIN,COUNTRYFIN,INFO,COPING,POLITICS,OCCUPATION,GENDER,COMMUNITY,CLASS
+70+,Yes,Yes,Yes,Too Health,Yes,Not Suffer,Suffer,Television,Difficult,Right,Not Working,Male,Small/Medium,Middle
+51-70,No,No,Yes,Too Health,Yes,Not Suffer,Suffer,Television,Medium,Centre,Working,Female,Small/Medium,Middle
+30-50,Yes,Yes,Yes,Too Health,Yes,Suffer,Suffer,Radio,Difficult,Left,Not Working,Male,Large,Middle
+30-50,Yes,Yes,Yes,Too Health,Yes,Suffer,Suffer,Television,Medium,Centre,Working,Female,Rural,Upper
+70+,Yes,Yes,Yes,Too Health,Yes,Not Suffer,Suffer,Television,Easy,Left,Not Working,Female,Small/Medium,Lower
+51-70,Yes,No,Yes,Too Economy,Yes,Not Suffer,Suffer,Social Network,Easy,Centre,Working,Male,Small/Medium,Lower
+<30,Yes,Yes,No,Too Economy,Yes,Suffer,Suffer,Television,Difficult,Left,Working,Male,Rural,Middle
+30-50,No,Yes,Yes,Too Health,Yes,Suffer,Suffer,Television,Easy,Left,Working,Female,Large,Working
+51-70,Yes,Yes,Yes,Balance,Yes,Not Suffer,Suffer,Television,Medium,Centre,Not Working,Male,Rural,Middle
+30-50,Yes,Yes,Yes,Too Health,Yes,Suffer,Suffer,Television,Medium,Left,Working,Male,Small/Medium,Working
+30-50,Yes,Yes,Yes,Too Economy,Yes,Not Suffer,Suffer,Website,Easy,Centre,Not Working,Male,Rural,Upper
+51-70,No,No,Yes,Too Economy,Yes,Suffer,Suffer,Television,Medium,Left,Not Working,Male,Small/Medium,Lower
+51-70,No,No,Yes,Too Health,No,Suffer,Suffer,Radio,Difficult,Centre,Not Working,Female,Rural,Working
+51-70,Yes,No,No,Too Economy,No,Not Suffer,Suffer,Television,Medium,Right,Working,Female,Rural,Middle
+51-70,Yes,Yes,Yes,Balance,Yes,Suffer,Suffer,Television,Difficult,Left,Working,Female,Rural,Middle
+30-50,Yes,No,No,Too Health,No,Not Suffer,Suffer,Television,Difficult,Left,Working,Female,Small/Medium,Middle
+<30,Yes,Yes,Yes,Balance,Yes,Not Suffer,Suffer,Television,Easy,Left,Not Working,Female,Large,Middle
+30-50,Yes,Yes,Yes,Too Health,Yes,Not Suffer,Suffer,Television,Medium,Centre,Working,Male,Rural,Middle
+<30,Yes,Yes,Yes,Balance,Yes,Suffer,Suffer,Website,Easy,Centre,Working,Female,Small/Medium,Lower
+51-70,Yes,No,Yes,Balance,Yes,Not Suffer,Not Suffer,Television,Easy,Centre,Working,Female,Rural,Middle
+51-70,Yes,Yes,Yes,Balance,Yes,Suffer,Suffer,Radio,Easy,Centre,Not Working,Female,Small/Medium,Middle
+30-50,Yes,Yes,Yes,Too Health,Yes,Suffer,Suffer,Television,Easy,Right,Working,Female,Large,Middle
+30-50,Yes,Yes,Yes,Balance,Yes,Suffer,Suffer,Social Network,Easy,Right,Working,Male,Small/Medium,Middle
+<30,Yes,Yes,Yes,Balance,Yes,Not Suffer,Suffer,Website,Medium,Right,Working,Male,Rural,Upper
+30-50,Yes,Yes,Yes,Too Health,Yes,Suffer,Suffer,Website,Medium,Centre,Working,Male,Rural,Working
+30-50,Yes,Yes,Yes,Too Health,Yes,Suffer,Suffer,Television,Medium,Right,Working,Male,Small/Medium,Middle
+30-50,Yes,No,No,Too Economy,Yes,Not Suffer,Suffer,Website,Medium,Left,Working,Female,Large,Upper
+51-70,Yes,Yes,No,Too Economy,No,Suffer,Suffer,Television,Medium,Left,Working,Female,Small/Medium,Working
+<30,Yes,No,Yes,Balance,No,Not Suffer,Not Suffer,Website,Difficult,Centre,Not Working,Male,Rural,Lower
+30-50,Yes,No,No,Too Health,No,Suffer,Suffer,Social Network,Easy,Right,Not Working,Female,Rural,Working
+30-50,Yes,Yes,Yes,Balance,Yes,Not Suffer,Not Suffer,Television,Difficult,Centre,Working,Male,Rural,Middle
+70+,Yes,Yes,Yes,Balance,Yes,Don't know,Suffer,Website,Easy,Right,Not Working,Male,Large,Upper
+51-70,Yes,Yes,Yes,Balance,No,Suffer,Suffer,Television,Difficult,Centre,Working,Male,Rural,Middle
+70+,No,No,No,Too Economy,Yes,Suffer,Suffer,Television,Difficult,Centre,Not Working,Male,Small/Medium,Working
+30-50,No,No,No,Too Economy,Yes,Not Suffer,Suffer,Social Network,Difficult,Left,Working,Female,Large,Lower
+70+,No,Yes,Yes,Too Health,Yes,Suffer,Suffer,Television,Medium,No Answer,Not Working,Male,Rural,Middle
+51-70,Yes,Yes,Yes,Too Health,Yes,Not Suffer,Suffer,Television,Easy,Centre,Not Working,Female,Large,Middle
+<30,Yes,No,No,Too Health,No,Suffer,Suffer,Television,Difficult,No Answer,Working,Female,Large,Middle
+30-50,Yes,Yes,Yes,Too Economy,No,Not Suffer,Suffer,Television,Difficult,Centre,Working,Male,Rural,Middle
+30-50,Yes,Yes,Yes,Too Economy,Yes,Suffer,Suffer,Social Network,Difficult,Left,Not Working,Female,Large,Middle
+70+,Yes,Yes,Yes,Balance,Yes,Not Suffer,Suffer,Television,Easy,Right,Not Working,Female,Small/Medium,Middle
+<30,Yes,Yes,Yes,Balance,Yes,Suffer,Suffer,Social Network,Difficult,Centre,Not Working,Male,Large,Middle
+30-50,Yes,Yes,No,Too Health,Yes,Not Suffer,Suffer,Social Network,Easy,Left,Working,Female,Small/Medium,Lower
+<30,No,Yes,No,Too Health,No,Suffer,Suffer,Website,Medium,Right,Working,Male,Rural,Working
+<30,Yes,Yes,Yes,Too Economy,Yes,Suffer,Suffer,Social Network,Easy,Centre,Working,Male,Large,Lower
+51-70,Yes,Yes,Yes,Balance,Yes,Suffer,Suffer,Website,Difficult,Left,Not Working,Male,Small/Medium,Middle
+30-50,Yes,Yes,Yes,Balance,Yes,Not Suffer,Suffer,Press,Easy,Centre,Working,Female,Rural,Working
+30-50,Yes,Yes,Yes,Too Economy,No,Suffer,Not Suffer,Television,Difficult,Left,Working,Female,Small/Medium,Upper
+70+,Yes,No,Yes,Too Health,Yes,Suffer,Suffer,Television,Difficult,Left,Not Working,Male,Rural,Lower
+51-70,Yes,Yes,Yes,Too Health,Yes,Not Suffer,Suffer,Television,Medium,Right,Not Working,Male,Small/Medium,Middle
+30-50,No,No,No,Too Economy,Yes,Suffer,Suffer,Television,Medium,Right,Not Working,Female,Large,Middle
+51-70,Yes,No,No,Too Health,Yes,Not Suffer,Suffer,Television,Easy,Left,Not Working,Male,Rural,Working
+30-50,No,Yes,No,Too Health,Yes,Suffer,Suffer,Television,Medium,Right,Working,Male,Large,Middle
+70+,No,Yes,Yes,Too Health,Yes,Suffer,Suffer,Television,Difficult,Right,Not Working,Female,Large,Middle
+30-50,Yes,Yes,Yes,Balance,Yes,Not Suffer,Suffer,Social Network,Difficult,Right,Working,Female,Small/Medium,Middle
+51-70,No,No,No,Too Economy,No,Not Suffer,Suffer,Social Network,Difficult,Left,Not Working,Male,Large,Middle
+51-70,Yes,Yes,No,Too Economy,No,Not Suffer,Suffer,Television,Easy,Right,Working,Female,Small/Medium,Middle
+30-50,Yes,No,No,Too Health,Yes,Suffer,Suffer,Radio,Medium,No Answer,Working,Female,Large,Lower
+30-50,Yes,No,No,Too Economy,Yes,Suffer,Suffer,Website,Easy,Right,Working,Male,Large,Upper
+51-70,Yes,Yes,No,Too Health,No,Suffer,Suffer,Social Network,Medium,Centre,Working,Female,Rural,Middle
+51-70,Yes,Yes,Yes,Balance,Yes,Suffer,Suffer,Website,Easy,Left,Working,Male,Rural,Middle
+30-50,Yes,No,Yes,Too Economy,Yes,Suffer,Suffer,Website,Medium,Left,Not Working,Female,Rural,Middle
+51-70,No,No,No,Too Economy,Yes,Not Suffer,Suffer,Television,Medium,Centre,Not Working,Female,Rural,Working
+<30,Yes,Yes,Yes,Balance,Yes,Suffer,Suffer,Social Network,Difficult,Left,Not Working,Female,Large,Middle
+51-70,Yes,Yes,Yes,Balance,Yes,Not Suffer,Suffer,Television,Medium,Right,Working,Male,Rural,Middle
+30-50,Yes,Yes,Yes,Too Health,Yes,Not Suffer,Suffer,Television,Medium,Left,Working,Female,Rural,Working
+<30,Yes,Yes,Yes,Balance,Yes,Suffer,Suffer,Social Network,Medium,Left,Not Working,Male,Small/Medium,Working
+30-50,Yes,Yes,Yes,Balance,Yes,Not Suffer,Suffer,Website,Easy,Centre,Working,Male,Small/Medium,Middle
+<30,Yes,Yes,No,Too Health,No,Suffer,Suffer,Television,Difficult,Centre,Not Working,Male,Large,Middle
+51-70,No,Yes,Yes,Too Health,Yes,Suffer,Suffer,Press,Medium,Left,Working,Female,Small/Medium,Working
+<30,Yes,No,No,Too Health,No,Suffer,Suffer,Social Network,Difficult,Left,Not Working,Female,Small/Medium,Lower
+51-70,Yes,Yes,Yes,Too Health,Yes,Not Suffer,Not Suffer,Television,Medium,Right,Working,Male,Rural,Middle
+51-70,Yes,Yes,No,Too Health,Yes,Not Suffer,Suffer,Television,Difficult,Centre,Not Working,Female,Small/Medium,Working
+30-50,No,No,No,Too Health,No,Not Suffer,Suffer,Website,Difficult,Left,Working,Male,Small/Medium,Middle
+70+,Yes,Yes,Yes,Too Economy,Yes,Not Suffer,Suffer,Television,Medium,Centre,Not Working,Female,Large,Lower
+30-50,Yes,No,No,Too Economy,Yes,Not Suffer,Suffer,Website,Medium,Centre,Working,Male,Small/Medium,Middle
+51-70,Yes,No,Yes,Balance,Yes,Suffer,Suffer,Television,Difficult,Right,Not Working,Female,Small/Medium,Middle
+51-70,Yes,Yes,Yes,Too Health,Yes,Suffer,Suffer,Social Network,Easy,Right,Working,Male,Large,Middle
+51-70,Yes,Yes,Yes,Too Health,No,Not Suffer,Not Suffer,Radio,Easy,Centre,Working,Female,Large,Upper
+51-70,Yes,Yes,Yes,Too Economy,Yes,Not Suffer,Suffer,Television,Easy,Centre,Working,Male,Rural,Middle
+30-50,No,No,Yes,Balance,Yes,Suffer,Suffer,Television,Easy,Left,Working,Male,Small/Medium,Working
+<30,Yes,Yes,Yes,Too Health,Yes,Suffer,Suffer,Social Network,Difficult,Centre,Working,Male,Small/Medium,Working
+30-50,Yes,No,No,Too Economy,Yes,Suffer,Suffer,Website,Easy,Centre,Working,Female,Large,Middle
+51-70,Yes,Yes,Yes,Too Economy,Yes,Not Suffer,Suffer,Television,Difficult,Centre,Working,Female,Small/Medium,Working
+30-50,Yes,Yes,No,Too Health,Yes,Suffer,Suffer,Television,Easy,Right,Not Working,Male,Rural,Working
+<30,Yes,No,Yes,Balance,Yes,Not Suffer,Suffer,Website,Easy,Right,Not Working,Female,Large,Middle
+51-70,Yes,No,Yes,Too Health,Yes,Suffer,Suffer,Social Network,Medium,Centre,Working,Female,Large,Middle
+<30,Yes,Yes,Yes,Too Health,Yes,Suffer,Suffer,Social Network,Easy,Left,Not Working,Female,Large,Middle
+51-70,No,No,Yes,Too Health,Yes,Not Suffer,Suffer,Television,Easy,Centre,Not Working,Female,Large,Lower
+<30,Yes,Yes,No,Too Health,Yes,Suffer,Suffer,Television,Difficult,Centre,Working,Male,Small/Medium,Middle
+51-70,Yes,Yes,No,Too Health,Yes,Suffer,Suffer,Radio,Easy,Centre,Not Working,Male,Small/Medium,Middle
+51-70,Yes,Yes,Yes,Balance,Yes,Not Suffer,Suffer,Television,Easy,Left,Working,Female,Large,Middle
+30-50,Yes,Yes,Yes,Balance,Yes,Not Suffer,Suffer,Website,Easy,Centre,Working,Female,Large,Lower
+70+,Yes,Yes,Yes,Balance,Yes,Not Suffer,Suffer,Television,Easy,Centre,Not Working,Female,Small/Medium,Middle
+30-50,Yes,No,Yes,Balance,Yes,Not Suffer,Not Suffer,Social Network,Medium,Centre,Working,Male,Rural,Middle
+51-70,Yes,Yes,No,Too Health,Yes,Not Suffer,Suffer,Television,Easy,No Answer,Not Working,Male,Large,Middle
+<30,Yes,No,No,Balance,Yes,Not Suffer,Suffer,Website,Difficult,Centre,Working,Female,Large,Middle
+70+,Yes,Yes,Yes,Balance,Yes,Not Suffer,Suffer,Television,Easy,Centre,Not Working,Female,Large,Working
+51-70,Yes,Yes,Yes,Balance,Yes,Not Suffer,Suffer,Social Network,Difficult,Left,Working,Female,Small/Medium,Middle
+<30,Yes,Yes,Yes,Too Health,Yes,Suffer,Suffer,Social Network,Difficult,Centre,Not Working,Female,Rural,Middle

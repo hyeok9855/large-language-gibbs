@@ -1,0 +1,58 @@
+{
+    "dataset_description": "A dataset with discrete variables of tuberculosis treatment outcome in Mpumalanga province.",
+    "field": "public health",
+    "features": {
+        "AgeGroup": {
+            "description": "Age group ( \"0 to 35\" | \"35 to 65\" | \"More than 65\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "0 to 35",
+                    "35 to 65",
+                    "More than 65"
+                ]
+            }
+        },
+        "Gender": {
+            "description": "Gender ( \"Male\" | \"Female\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Male",
+                    "Female"
+                ]
+            }
+        },
+        "Location": {
+            "description": "Location ( \"Nkangala\" | \"Gert Sibande\" | \"Ehlanzeni\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Nkangala",
+                    "Gert Sibande",
+                    "Ehlanzeni"
+                ]
+            }
+        },
+        "TreatmentOutcome": {
+            "description": "Treatment outcome ( \"Alive\" | \"Died\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Alive",
+                    "Died"
+                ]
+            }
+        },
+        "Tuberculosis": {
+            "description": "Tuberculosis ( \"Pulmonary\" | \"ExtraPulmonary\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Pulmonary",
+                    "ExtraPulmonary"
+                ]
+            }
+        }
+    }
+}

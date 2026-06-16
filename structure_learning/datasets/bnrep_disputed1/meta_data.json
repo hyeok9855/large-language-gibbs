@@ -1,0 +1,116 @@
+{
+    "dataset_description": "A dataset with discrete variables from the evaluation of transfer evidence given activity level propositions considering a dispute about the relation of an item to one or more activities.",
+    "field": "forensic science",
+    "features": {
+        "BGU": {
+            "description": "Background DNA U on sweater ( \"false\" | \"true\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "false",
+                    "true"
+                ]
+            }
+        },
+        "DNAFind": {
+            "description": "DNA findings on sweater ( \"false\" | \"true\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "false",
+                    "true"
+                ]
+            }
+        },
+        "DNAU": {
+            "description": "DNA U present on sweater ( \"false\" | \"true\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "false",
+                    "true"
+                ]
+            }
+        },
+        "DNAX": {
+            "description": "DNA X present on sweater ( \"false\" | \"true\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "false",
+                    "true"
+                ]
+            }
+        },
+        "Prop": {
+            "description": "Who strangled person Y? ( \"H1\" | \"H2\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "H1",
+                    "H2"
+                ]
+            }
+        },
+        "TPRaltactX": {
+            "description": "Transfer of DNA X from X to sweater via X wearing sweater two weekd before incident ( \"false\" | \"true\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "false",
+                    "true"
+                ]
+            }
+        },
+        "TPRUstrangledY": {
+            "description": "Transfer of DNA U from U to sweater via U strangling Y ( \"false\" | \"true\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "false",
+                    "true"
+                ]
+            }
+        },
+        "TPRXstrangledY": {
+            "description": "Transfer of DNA X from X to sweater via X strangling Y ( \"false\" | \"true\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "false",
+                    "true"
+                ]
+            }
+        },
+        "UstrangledY": {
+            "description": "Unknown person strangled person Y ( \"false\" | \"true\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "false",
+                    "true"
+                ]
+            }
+        },
+        "Xaltact": {
+            "description": "X wore sweater two weeks before incident ( \"false\" | \"true\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "false",
+                    "true"
+                ]
+            }
+        },
+        "XstrangledY": {
+            "description": "Mr. X strangled person Y ( \"false\" | \"true\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "false",
+                    "true"
+                ]
+            }
+        }
+    }
+}

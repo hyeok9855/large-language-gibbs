@@ -1,0 +1,5 @@
+"Cause","Effect"
+"AgeGroup","Tubercolosis"
+"Gender","Tubercolosis"
+"Location","Tubercolosis"
+"Tubercolosis","TreatmentOutcome"

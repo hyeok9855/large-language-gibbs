@@ -1,0 +1,66 @@
+{
+    "dataset_description": "A dataset with discrete variables of test results (pass or fail) for each course of students who have graduated from the network technology specialty.",
+    "field": "social science and education",
+    "features": {
+        "Android": {
+            "description": "Android app development course ( \"Pass\" | \"Fail\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Pass",
+                    "Fail"
+                ]
+            }
+        },
+        "C#": {
+            "description": "C# programming course ( \"Pass\" | \"Fail\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Pass",
+                    "Fail"
+                ]
+            }
+        },
+        "Database": {
+            "description": "Database design and management course ( \"Pass\" | \"Fail\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Pass",
+                    "Fail"
+                ]
+            }
+        },
+        "Java": {
+            "description": "Java programming course ( \"Pass\" | \"Fail\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Pass",
+                    "Fail"
+                ]
+            }
+        },
+        "Math": {
+            "description": "Application mathematics course ( \"Pass\" | \"Fail\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Pass",
+                    "Fail"
+                ]
+            }
+        },
+        "Web": {
+            "description": "Design and application of web database course ( \"Pass\" | \"Fail\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Pass",
+                    "Fail"
+                ]
+            }
+        }
+    }
+}

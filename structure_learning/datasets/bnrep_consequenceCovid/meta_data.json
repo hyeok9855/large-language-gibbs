@@ -1,0 +1,170 @@
+{
+    "dataset_description": "A dataset of discrete variables including demographic information of the respondents of the Eurobarometer 93.1 together with their opinion about how the COVID-19 emergency was handled by local authorities and its consequences in the long term.",
+    "field": "social science",
+    "features": {
+        "AGE": {
+            "description": "How old are you? ( \"<30\" | \"30-50\" | \"51-70\" | \"70+\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "<30",
+                    "30-50",
+                    "51-70",
+                    "70+"
+                ]
+            }
+        },
+        "LIFESAT": {
+            "description": "On the whole, are you satisfied with the life you lead? ( \"Yes\" | \"No\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Yes",
+                    "No"
+                ]
+            }
+        },
+        "TRUST": {
+            "description": "Do you trust or not the people in your country? ( \"Yes\" | \"No\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Yes",
+                    "No"
+                ]
+            }
+        },
+        "SATMEAS": {
+            "description": "In general, are you satisfied with the measures taken to fight the Coronavirus outbreak by your government? ( \"Yes\" | \"No\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Yes",
+                    "No"
+                ]
+            }
+        },
+        "HEALTH": {
+            "description": "Thinking about the measures taken by the public authorities in your country to fight the Coronavirus and its effects, would you say that they... ( \"Too Health\": Focus too much on health | \"Too Economy\": Focus too much on economivcs | \"Balance\": Are balanced )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Too Health",
+                    "Too Economy",
+                    "Balance"
+                ]
+            }
+        },
+        "JUSTIFIED": {
+            "description": "Thinking about the measures taken by the public authorities in your country to fight the Coronavirus and its effects, would you say that they were justfied? ( \"Yes\" | \"No\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Yes",
+                    "No"
+                ]
+            }
+        },
+        "PERSONALFIN": {
+            "description": "The Coronavirus outbreak will have serious economic consequences for you personally ( \"Suffer\" | \"Not Suffer\" | \"Don't know\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Suffer",
+                    "Not Suffer",
+                    "Don't know"
+                ]
+            }
+        },
+        "COUNTRYFIN": {
+            "description": "The Coronavirus outbreak will have serious economic consequences for your country ( \"Suffer\" | \"Not Suffer\" | \"Don't know\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Suffer",
+                    "Not Suffer",
+                    "Don't know"
+                ]
+            }
+        },
+        "INFO": {
+            "description": "Which of the following was your primary source of information during the Coronavirus outbreak? ( \"Television\" | \"Press\" | \"Radio\" | \"Website\" | \"Social Network\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Television",
+                    "Press",
+                    "Radio",
+                    "Website",
+                    "Social Network"
+                ]
+            }
+        },
+        "COPING": {
+            "description": "Thinking about the measures taken to fight the Coronavirus outbreak, in particular the confinement measures, would you say that it was an experience...? ( \"Easy\": Easy to cope with | \"Medium\": Both easy and difficult to cope with | \"Difficult\": Difficult to cope with )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Easy",
+                    "Medium",
+                    "Difficult"
+                ]
+            }
+        },
+        "POLITICS": {
+            "description": "In political matters people talk of 'the left' and 'the right'. How would you place your views on this scale? ( \"Left\" | \"Centre\" | \"Right\" | \"No Answer\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Left",
+                    "Centre",
+                    "Right",
+                    "No Answer"
+                ]
+            }
+        },
+        "OCCUPATION": {
+            "description": "Are you currently working? ( \"Not Working\" | \"Working\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Not Working",
+                    "Working"
+                ]
+            }
+        },
+        "GENDER": {
+            "description": "What is your sex? ( \"Male\" | \"Female\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Male",
+                    "Female"
+                ]
+            }
+        },
+        "COMMUNITY": {
+            "description": "Would you say you live in a... ( \"Rural\": Rural area or village | \"Small/Medium\": Small or middle sized town | \"Large\": Large town )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Rural",
+                    "Small/Medium",
+                    "Large"
+                ]
+            }
+        },
+        "CLASS": {
+            "description": "Do you see yourself and your household belonging to...? ( \"Working\": Working class | \"Lower\": Lower class | \"Middle\": Middle class | \"Upper\": Upper class )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Working",
+                    "Lower",
+                    "Middle",
+                    "Upper"
+                ]
+            }
+        }
+    }
+}

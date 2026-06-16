@@ -1,0 +1,86 @@
+{
+    "dataset_description": "A dataset of discrete variables to predict chlorophyll-a (chl-a) using a range of water quality parameters as predictors.",
+    "field": "environmental science",
+    "features": {
+        "C": {
+            "description": "conductivity ( \"low\" | \"high\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "low",
+                    "high"
+                ]
+            }
+        },
+        "Chl_a": {
+            "description": "chlorophyll-a ( \"low\" | \"high\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "low",
+                    "high"
+                ]
+            }
+        },
+        "DO": {
+            "description": "dissolved oxygen ( \"low\" | \"high\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "low",
+                    "high"
+                ]
+            }
+        },
+        "N": {
+            "description": "nitrogen ( \"low\" | \"high\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "low",
+                    "high"
+                ]
+            }
+        },
+        "P": {
+            "description": "phosphorous ( \"low\" | \"high\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "low",
+                    "high"
+                ]
+            }
+        },
+        "pH": {
+            "description": "pH level ( \"low\" | \"high\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "low",
+                    "high"
+                ]
+            }
+        },
+        "Te": {
+            "description": "temperature ( \"low\" | \"high\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "low",
+                    "high"
+                ]
+            }
+        },
+        "Tu": {
+            "description": "turbidity ( \"low\" | \"high\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "low",
+                    "high"
+                ]
+            }
+        }
+    }
+}
