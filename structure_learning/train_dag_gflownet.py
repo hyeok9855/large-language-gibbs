@@ -20,6 +20,7 @@ from structure_learning.utils.misc_utils import MODEL_NAME_TO_TYPE, STRUCTURE_LE
 DATASETS_DIR = STRUCTURE_LEARNING_DIR / "datasets"
 TRAIN_SCRIPT = STRUCTURE_LEARNING_DIR / "dag_gflownet" / "train.py"
 LOG_DIR = STRUCTURE_LEARNING_DIR / "tmp"
+RESULTS_DIR = STRUCTURE_LEARNING_DIR / "results"
 
 DATASET_PARAMS = {
     "bnrep_tubercolosis": {"burnin": 100, "thinning": 10, "block_size": 1, "sweep": True},
@@ -104,6 +105,16 @@ def build_uninformative_exp_name(prior: str, seed: int, edge_beta: float) -> str
 def log_path_for(experiment: Experiment, gpu: int) -> Path:
     exp_slug = experiment.exp_name.replace("/", "__")
     return LOG_DIR / f"gpu{gpu}_{experiment.dataset_name}_{exp_slug}.log"
+
+
+def result_path_for(experiment: Experiment, num_samples: int) -> Path:
+    return (
+        RESULTS_DIR
+        / experiment.dataset_name
+        / f"n{num_samples}"
+        / experiment.exp_name
+        / "results.json"
+    )
 
 
 def iter_experiments(args: argparse.Namespace) -> list[Experiment]:
@@ -310,7 +321,14 @@ def main(args: argparse.Namespace) -> None:
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-    experiments = iter_experiments(args)
+    all_experiments = iter_experiments(args)
+    experiments = [
+        exp for exp in all_experiments if not result_path_for(exp, args.num_samples).is_file()
+    ]
+    skipped = len(all_experiments) - len(experiments)
+    if skipped:
+        print(f"Skipping {skipped} experiment(s) with existing results.")
+
     commands = [build_train_command(exp, args) for exp in experiments]
     print(f"Planned {len(experiments)} experiment(s) on GPUs {args.gpus}.")
 

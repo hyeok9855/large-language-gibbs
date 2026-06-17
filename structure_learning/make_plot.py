@@ -14,13 +14,7 @@ AlgoKey = tuple[str, str, float | None, float | None]
 
 BASE_DIR = STRUCTURE_LEARNING_DIR / "results"
 
-UNINFORMATIVE_DIR = "uninformative"
-
-BLOCK2_DATASETS = frozenset({"bnrep_disputed1", "bnrep_consequenceCovid"})
-GIBBS_BASE_METHODS = frozenset({"gibbs", "gibbs_instruct", "barker_gibbs", "gambling_gibbs"})
-
 LLM_EXP_PATTERN = re.compile(r"^(.+?)_temp(\d+\.?\d*)_gamma(\d+\.?\d*)$")
-MAT_EDGE_EXP_PATTERN = re.compile(r"^(.+?)_temp(\d+\.?\d*)_mr(\d+\.?\d*)$")
 EDGE_BETA_PATTERN = re.compile(r"^edge_beta(\d+\.?\d*)$")
 RUN_SUFFIX_PATTERN = re.compile(r"_sd(\d+)$")
 
@@ -57,7 +51,7 @@ def families_with_results(base: Path) -> list[tuple[str, tuple[str, ...]]]:
     known_slugs = {
         p.name
         for p in base.iterdir()
-        if p.is_dir() and p.name != UNINFORMATIVE_DIR and slug_to_hf(p.name) is not None
+        if p.is_dir() and p.name != "uninformative" and slug_to_hf(p.name) is not None
     }
     return [
         (base_hf, family_slugs)
@@ -67,8 +61,6 @@ def families_with_results(base: Path) -> list[tuple[str, tuple[str, ...]]]:
 
 
 def to_instruct_method(method: str) -> str:
-    if method.endswith("_block2"):
-        return f"{method.removesuffix('_block2')}_instruct_block2"
     if method in {"direct", "gibbs"}:
         return f"{method}_instruct"
     return method
@@ -77,7 +69,7 @@ def to_instruct_method(method: str) -> str:
 def canonical_method(method: str, model_slug: str) -> str:
     hf = slug_to_hf(model_slug)
     if hf is not None and MODEL_NAME_TO_TYPE[hf] == "instruct":
-        return to_instruct_method(method)
+        method = to_instruct_method(method)
     return method
 
 
@@ -86,68 +78,31 @@ METHOD_DISPLAY = {
     "direct": "Direct",
     "direct_instruct": "Direct-Inst.",
     "gibbs": "Gibbs",
-    "gibbs_block2": "Gibbs",
-    # "gibbs_block4": "Gibbs (B=4)",
     "gibbs_instruct": "Gibbs-Inst.",
-    "gibbs_instruct_block2": "Gibbs-Inst.",
-    # "gibbs_instruct_block4": "Gibbs-Inst. (B=4)",
     "barker_gibbs": "Barker-Gibbs",
-    "barker_gibbs_block2": "Barker-Gibbs",
-    # "barker_gibbs_block4": "Barker-Gibbs (B=4)",
     "gambling_gibbs": "Gambl.-Gibbs",
-    "gambling_gibbs_block2": "Gambl.-Gibbs",
-    # "gambling_gibbs_block4": "Gambl.-Gibbs (B=4)",
-    # "barker": "Barker",
-    # "gambling": "Gambling",
-    # "edge": "Edge",
-    # "fair": "Fair",
-    # "mat_edge_base_mr0.0": "Edge-Matrix-Mix0.0",
-    # "mat_edge_base_mr0.5": "Edge-Matrix-Mix0.5",
-    # "mat_edge_instruct_mr0.0": "Edge-Matrix-Instruct-Mix0.0",
-    # "mat_edge_instruct_mr0.5": "Edge-Matrix-Instruct-Mix0.5",
 }
 
 TEMP_DISPLAY = [0.0, 1.0]
 
 METHOD_ORDER = [
     "uniform",
-    # "mat_edge_base_mr0.0",
-    # "mat_edge_base_mr0.5",
-    # "mat_edge_instruct_mr0.0",
-    # "mat_edge_instruct_mr0.5",
-    # "edge",
-    # "fair",
     "direct",
     "direct_instruct",
     "gibbs",
-    "gibbs_block2",
     "gibbs_instruct",
-    "gibbs_instruct_block2",
-    # "barker",
-    # "gambling",
     "barker_gibbs",
-    "barker_gibbs_block2",
     "gambling_gibbs",
-    "gambling_gibbs_block2",
 ]
 
 PALETTE = {
     "uniform": "#1f77b4",
-    # "mat_edge": "#aec7e8",
-    # "edge": "#aec7e8",
-    # "fair": "#6baed6",
     "direct": "#ffbb78",
     "direct_instruct": "#aec7e8",
     "gibbs": "#d62728",
-    "gibbs_block2": "#d62728",
     "gibbs_instruct": "#9467bd",
-    "gibbs_instruct_block2": "#9467bd",
-    # "barker": "#ff7f0e",
-    # "gambling": "#2ca02c",
     "barker_gibbs": "#e377c2",
-    "barker_gibbs_block2": "#e377c2",
     "gambling_gibbs": "#98df8a",
-    "gambling_gibbs_block2": "#98df8a",
 }
 
 
@@ -164,7 +119,7 @@ def parse_experiment(model: str, name: str) -> AlgoKey:
     """
     name = RUN_SUFFIX_PATTERN.sub("", name)
 
-    if model == UNINFORMATIVE_DIR:
+    if model == "uninformative":
         if name == "uniform":
             return (model, "uniform", None, None)
         if name == "fair":
@@ -172,12 +127,6 @@ def parse_experiment(model: str, name: str) -> AlgoKey:
         if EDGE_BETA_PATTERN.match(name) or name == "edge":
             return (model, "edge", None, None)
         return (model, name, None, None)
-
-    if "mat_" in name:
-        m = MAT_EDGE_EXP_PATTERN.match(name)
-        if m:
-            return (model, m.group(1) + "_mr" + m.group(3), float(m.group(2)), None)
-        raise
 
     m = LLM_EXP_PATTERN.match(name)
     if m:
@@ -192,7 +141,7 @@ def load_results(base_dir: Path) -> dict[AlgoKey, list[dict]]:
     for model_dir in sorted(base_dir.iterdir()):
         if not model_dir.is_dir():
             continue
-        if model_dir.name != UNINFORMATIVE_DIR and slug_to_hf(model_dir.name) is None:
+        if model_dir.name != "uninformati" and slug_to_hf(model_dir.name) is None:
             continue
         for exp_dir in sorted(model_dir.iterdir()):
             if not exp_dir.is_dir():
@@ -225,8 +174,8 @@ def group_family_results(
     for key, runs in grouped.items():
         model, method, temp, gamma_key = key
 
-        if model == UNINFORMATIVE_DIR:
-            if method in METHOD_DISPLAY and _method_allowed(method, dataset_name):
+        if model == "uninformati":
+            if method in METHOD_DISPLAY:
                 merged[key].extend(runs)
             continue
 
@@ -236,7 +185,7 @@ def group_family_results(
             continue
 
         plot_method = canonical_method(method, model)
-        if plot_method not in METHOD_DISPLAY or not _method_allowed(plot_method, dataset_name):
+        if plot_method not in METHOD_DISPLAY:
             continue
 
         plot_key = (family_base, plot_method, temp, gamma_key)
@@ -245,18 +194,9 @@ def group_family_results(
     return dict(merged)
 
 
-def _method_allowed(method: str, dataset_name: str) -> bool:
-    use_block2 = dataset_name in BLOCK2_DATASETS
-    if method.endswith("_block2"):
-        return use_block2
-    if method in GIBBS_BASE_METHODS:
-        return not use_block2
-    return True
-
-
 def _model_sort_idx(model: str) -> tuple[int, str]:
-    # Uninformative first, then LLMs alphabetically.
-    return (0 if model == UNINFORMATIVE_DIR else 1, model)
+    # Uninformative firs then LLMs alphabetically.
+    return (0 if model == "uninformative" else 1, model)
 
 
 def _sort_key(key: AlgoKey) -> tuple[tuple[int, str], int, float, float]:
@@ -389,7 +329,7 @@ def plot_family(
         )
 
     print(
-        f"Loaded algorithms ({UNINFORMATIVE_DIR} + {family_id}, "
+        f"Loaded algorithms (uninformative + {family_id}, "
         f"slugs={available_slugs}, gamma={gamma}):"
     )
     for key in sorted(grouped.keys(), key=_sort_key):
@@ -403,7 +343,7 @@ def plot_family(
     ]
 
     title = f"{dataset_name.replace('bnrep_', '')}"
-    plot_stem = f"boxplot_results_{family_base}_gamma{gamma}"
+    plot_stem = f"boxplot_{family_base}_gamma{gamma}"
     make_boxplot(grouped, metrics, title=title, save_path=base / f"{plot_stem}.png")
     make_boxplot(grouped, metrics, title=title, save_path=base / f"{plot_stem}.pdf")
 
