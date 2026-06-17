@@ -29,15 +29,25 @@ DATASET_PARAMS = {
     "bnrep_consequenceCovid": {"burnin": 150, "thinning": 15, "block_size": 2, "sweep": True},
 }
 
+LLM_DATA_SAMPLING_METHODS = frozenset({"direct", "gibbs", "barker_gibbs", "gambling_gibbs"})
+
 
 @dataclass(frozen=True)
 class Experiment:
     dataset_name: str
-    sampling_method: str
+    prior: str
+    llm_data_sampling_method: str | None
+    llm_data_base_prior: str | None
     gamma: float
     seed: int
-    data_path: Path
+    data_path: Path | None
     exp_name: str
+
+    @property
+    def label(self) -> str:
+        if self.prior == "llm_data":
+            return f"llm_data:{self.llm_data_sampling_method}"
+        return self.prior
 
 
 def parse_gpus(value: str) -> list[int]:
@@ -86,6 +96,11 @@ def build_exp_name(
     return f"{model_slug}/{sampling_method}{reasoning_suffix}_temp{temp}_gamma{gamma}_sd{seed}"
 
 
+def build_uninformative_exp_name(prior: str, seed: int, edge_beta: float) -> str:
+    name = f"edge_beta{edge_beta}" if prior == "edge" else prior
+    return f"Uninformative/{name}_sd{seed}"
+
+
 def log_path_for(experiment: Experiment, gpu: int) -> Path:
     exp_slug = experiment.exp_name.replace("/", "__")
     return LOG_DIR / f"gpu{gpu}_{experiment.dataset_name}_{exp_slug}.log"
@@ -93,51 +108,70 @@ def log_path_for(experiment: Experiment, gpu: int) -> Path:
 
 def iter_experiments(args: argparse.Namespace) -> list[Experiment]:
     experiments: list[Experiment] = []
-    for gamma in args.gammas:
-        for seed in args.seeds:
-            for dataset_name in args.datasets:
-                if dataset_name not in DATASET_PARAMS:
-                    raise ValueError(f"Unknown dataset: {dataset_name!r}")
-                for sampling_method in args.sampling_methods:
-                    data_path = build_data_path(
+    prior = args.prior
+    for seed in args.seeds:
+        for dataset_name in args.datasets:
+            if dataset_name not in DATASET_PARAMS:
+                raise ValueError(f"Unknown dataset: {dataset_name!r}")
+            if prior != "llm_data":
+                experiments.append(
+                    Experiment(
                         dataset_name=dataset_name,
-                        sampling_method=sampling_method,
-                        model_name=args.model_name,
+                        prior=prior,
+                        llm_data_sampling_method=None,
+                        llm_data_base_prior=None,
+                        gamma=0.0,
                         seed=seed,
-                        manual_reasoning=args.manual_reasoning,
+                        data_path=None,
+                        exp_name=build_uninformative_exp_name(prior, seed, args.edge_beta),
                     )
-                    exp_name = build_exp_name(
-                        model_name=args.model_name,
-                        sampling_method=sampling_method,
+                )
+                continue
+            for gamma in args.gammas:
+                experiments.append(
+                    Experiment(
+                        dataset_name=dataset_name,
+                        prior=prior,
+                        llm_data_sampling_method=args.llm_data_sampling_method,
+                        llm_data_base_prior=args.llm_data_base_prior,
                         gamma=gamma,
                         seed=seed,
-                        manual_reasoning=args.manual_reasoning,
-                    )
-                    experiments.append(
-                        Experiment(
+                        data_path=build_data_path(
                             dataset_name=dataset_name,
-                            sampling_method=sampling_method,
+                            sampling_method=args.llm_data_sampling_method,
+                            model_name=args.model_name,
+                            seed=seed,
+                            manual_reasoning=args.manual_reasoning,
+                        ),
+                        exp_name=build_exp_name(
+                            model_name=args.model_name,
+                            sampling_method=args.llm_data_sampling_method,
                             gamma=gamma,
                             seed=seed,
-                            data_path=data_path,
-                            exp_name=exp_name,
-                        )
+                            manual_reasoning=args.manual_reasoning,
+                        ),
                     )
+                )
     return experiments
 
 
 def build_train_command(exp: Experiment, args: argparse.Namespace) -> list[str]:
-    prior_kwargs = {
-        "data_path": str(exp.data_path),
-        "gamma": exp.gamma,
-        "uninformative_prior": "uniform",
-        "uninformative_prior_kwargs": {},
-    }
+    if exp.prior == "llm_data":
+        base_prior = exp.llm_data_base_prior
+        base_prior_kwargs = {"beta": args.edge_beta} if base_prior == "edge" else {}
+        prior_kwargs = {
+            "data_path": str(exp.data_path),
+            "gamma": exp.gamma,
+            "base_prior": base_prior,
+            "base_prior_kwargs": base_prior_kwargs,
+        }
+    else:
+        prior_kwargs = {"beta": args.edge_beta} if exp.prior == "edge" else {}
     return [
         sys.executable,
         str(TRAIN_SCRIPT),
         "--prior",
-        "llm_data",
+        exp.prior,
         "--prior_kwargs",
         json.dumps(prior_kwargs),
         "--exp_name",
@@ -199,7 +233,7 @@ class GpuJobPool:
         )
         print(
             f"Launched pid={process.pid} on GPU {gpu}: "
-            f"{experiment.dataset_name} {experiment.sampling_method} "
+            f"{experiment.dataset_name} {experiment.label} "
             f"gamma={experiment.gamma} seed={experiment.seed} "
             f"log={log_path}",
             flush=True,
@@ -219,7 +253,7 @@ class GpuJobPool:
                 failed += 1
             print(
                 f"Finished pid={job.process.pid} on GPU {job.gpu} [{status}]: "
-                f"{job.experiment.dataset_name} {job.experiment.sampling_method} "
+                f"{job.experiment.dataset_name} {job.experiment.label} "
                 f"gamma={job.experiment.gamma} seed={job.experiment.seed} "
                 f"log={job.log_path}",
                 flush=True,
@@ -286,7 +320,7 @@ def main(args: argparse.Namespace) -> None:
             log_path = log_path_for(exp, gpu)
             print(
                 f"[dry-run] GPU {gpu}: {exp.exp_name}\n"
-                f"  data_path={exp.data_path}\n"
+                f"  data_path={exp.data_path or '(n/a)'}\n"
                 f"  log_path={log_path}\n"
                 f"  command={' '.join(command)}"
             )
@@ -327,17 +361,29 @@ if __name__ == "__main__":
         help="Dataset names, e.g. bnrep_tubercolosis bnrep_knowledge.",
     )
     parser.add_argument(
-        "--sampling_methods",
-        nargs="+",
-        choices=["direct", "gibbs", "barker_gibbs", "gambling_gibbs"],
+        "--prior",
+        choices=["uniform", "edge", "fair", "llm_data"],
         required=True,
-        help="LLM sampling methods used to generate prior data.",
+        help="Prior type passed to train.py: an uninformative prior (uniform, edge, fair) "
+        "or llm_data.",
+    )
+    parser.add_argument(
+        "--llm_data_sampling_method",
+        choices=sorted(LLM_DATA_SAMPLING_METHODS),
+        default=None,
+        help="Sampling method of the LLM prior data (required when --prior llm_data).",
+    )
+    parser.add_argument(
+        "--llm_data_base_prior",
+        choices=["uniform", "edge", "fair"],
+        default="uniform",
+        help="Uninformative base prior mixed into the llm_data prior (default: %(default)s).",
     )
     parser.add_argument(
         "--model_name",
         type=str,
-        required=True,
-        help="HuggingFace model name, e.g. meta-llama/Llama-3.1-8B.",
+        default=None,
+        help="HuggingFace model name (required when --prior llm_data).",
     )
     parser.add_argument(
         "--manual_reasoning",
@@ -357,6 +403,12 @@ if __name__ == "__main__":
         type=float,
         default=[0.5],
         help="Gamma values for the LLM data prior (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--edge_beta",
+        type=float,
+        default=0.9,
+        help="Beta for the edge prior (default: %(default)s).",
     )
     parser.add_argument(
         "--num_samples",
@@ -383,16 +435,21 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if args.model_name not in MODEL_NAME_TO_TYPE:
-        raise ValueError(
-            f"Unknown model_name: {args.model_name!r}. "
-            f"Add it to MODEL_NAME_TO_TYPE in structure_learning/utils/misc_utils.py."
-        )
-    if args.manual_reasoning and MODEL_NAME_TO_TYPE[args.model_name] != "instruct":
-        raise ValueError(
-            f"Manual reasoning is only supported for instruct models; "
-            f"got {MODEL_NAME_TO_TYPE[args.model_name]!r} model {args.model_name!r}."
-        )
+    if args.prior == "llm_data":
+        if args.llm_data_sampling_method is None:
+            raise ValueError("--llm_data_sampling_method is required when --prior llm_data.")
+        if args.model_name is None:
+            raise ValueError("--model_name is required when --prior llm_data.")
+        if args.model_name not in MODEL_NAME_TO_TYPE:
+            raise ValueError(
+                f"Unknown model_name: {args.model_name!r}. "
+                f"Add it to MODEL_NAME_TO_TYPE in structure_learning/utils/misc_utils.py."
+            )
+        if args.manual_reasoning and MODEL_NAME_TO_TYPE[args.model_name] != "instruct":
+            raise ValueError(
+                f"Manual reasoning is only supported for instruct models; "
+                f"got {MODEL_NAME_TO_TYPE[args.model_name]!r} model {args.model_name!r}."
+            )
 
     try:
         main(args)

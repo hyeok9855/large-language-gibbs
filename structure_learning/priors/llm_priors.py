@@ -20,7 +20,7 @@ class LLMDataPrior(BasePrior, ABC):
 
     Args:
         data: LLM-generated data.
-        uninformative_prior: Uninformative prior (e.g., UniformPrior).
+        base_prior: Uninformative prior (e.g., UniformPrior).
         gamma: inverse temperature in [0, 1] for the prior. Default is 1.0.
             0 reduces to the uninformative prior, 1.0 corresponds to standard Bayesian update.
     """
@@ -29,13 +29,13 @@ class LLMDataPrior(BasePrior, ABC):
         self,
         num_variables: int,
         data: pd.DataFrame,
-        uninformative_prior: UninformativePrior,
+        base_prior: UninformativePrior,
         gamma: float = 1.0,
     ):
         super().__init__(num_variables)
-        assert num_variables == len(data.columns) == uninformative_prior.num_variables
+        assert num_variables == len(data.columns) == base_prior.num_variables
         self.data = data
-        self.uninformative_prior = uninformative_prior
+        self.base_prior = base_prior
         self.gamma = gamma
 
 
@@ -45,7 +45,7 @@ class LLMDataBGePrior(LLMDataPrior):
 
     Args:
         data: LLM-generated data.
-        uninformative_prior: Uninformative prior (e.g., UniformPrior).
+        base_prior: Uninformative prior (e.g., UniformPrior).
         gamma: inverse temperature in [0, 1] for the prior. Default is 1.0.
             0 reduces to the uninformative prior, 1.0 corresponds to standard Bayesian update.
         mean_obs: np.ndarray of size (num_variables,). Mean of the observed data.
@@ -61,17 +61,17 @@ class LLMDataBGePrior(LLMDataPrior):
         self,
         num_variables: int,
         data: pd.DataFrame,
-        uninformative_prior: UninformativePrior,
+        base_prior: UninformativePrior,
         gamma: float = 1.0,
         mean_obs: np.ndarray | None = None,
         alpha_mu: float = 1.0,
         alpha_w: float | None = None,
     ):
-        super().__init__(num_variables, data, uninformative_prior, gamma)
+        super().__init__(num_variables, data, base_prior, gamma)
 
         self.bge_scorer = BGeScore(
             data=self.data,
-            prior=self.uninformative_prior,
+            prior=self.base_prior,
             mean_obs=mean_obs,
             alpha_mu=alpha_mu,
             alpha_w=alpha_w,
@@ -88,7 +88,7 @@ class LLMDataBDePrior(LLMDataPrior):
 
     Args:
         data: LLM-generated data.
-        uninformative_prior: Uninformative prior (e.g., UniformPrior).
+        base_prior: Uninformative prior (e.g., UniformPrior).
         gamma: inverse temperature in [0, 1] for the prior. Default is 1.0.
             0 reduces to the uninformative prior, 1.0 corresponds to standard Bayesian update.
         equivalent_sample_size: float. The equivalent sample size (of uniform pseudo samples) for
@@ -100,15 +100,15 @@ class LLMDataBDePrior(LLMDataPrior):
         self,
         num_variables: int,
         data: pd.DataFrame,
-        uninformative_prior: UninformativePrior,
+        base_prior: UninformativePrior,
         gamma: float = 1.0,
         equivalent_sample_size: float = 1.0,
     ):
-        super().__init__(num_variables, data, uninformative_prior, gamma)
+        super().__init__(num_variables, data, base_prior, gamma)
 
         self.bde_scorer = BDeScore(
             data=self.data,
-            prior=self.uninformative_prior,
+            prior=self.base_prior,
             equivalent_sample_size=equivalent_sample_size,
         )
 

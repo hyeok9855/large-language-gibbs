@@ -193,15 +193,15 @@ def get_prior(
         kwargs["data"] = pd.read_csv(
             kwargs["data_path"], dtype="category" if score == "bde" else float
         )
-        kwargs["uninformative_prior"] = get_prior(
-            name=kwargs["uninformative_prior"],
+        kwargs["base_prior"] = get_prior(
+            name=kwargs["base_prior"],
             score=score,
             num_variables=num_variables,
-            **kwargs.get("uninformative_prior_kwargs", {}),
+            **kwargs.get("base_prior_kwargs", {}),
         )
         del kwargs["data_path"]
-        if "uninformative_prior_kwargs" in kwargs:
-            del kwargs["uninformative_prior_kwargs"]
+        if "base_prior_kwargs" in kwargs:
+            del kwargs["base_prior_kwargs"]
 
     if name.startswith("llm_edge_matrix_"):
         if "edge_matrix_path" in kwargs:

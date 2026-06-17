@@ -1,5 +1,6 @@
 from .base import BasePrior
 from .uninformative_priors import (
+    UninformativePrior,
     UniformPrior,
     ErdosRenyiPrior,
     EdgePrior,

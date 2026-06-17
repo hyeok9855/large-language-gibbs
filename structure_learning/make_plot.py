@@ -1,5 +1,3 @@
-raise NotImplementedError("This script is not implemented yet")
-
 import argparse
 import json
 import re
@@ -9,14 +7,14 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from structure_learning.utils.misc_utils import STRUCTURE_LEARNING_DIR
+from structure_learning.utils.misc_utils import MODEL_NAME_TO_TYPE, STRUCTURE_LEARNING_DIR
 
 # (model, method, temp, gamma) — temp and gamma are None for uninformative priors
 AlgoKey = tuple[str, str, float | None, float | None]
 
 BASE_DIR = STRUCTURE_LEARNING_DIR / "results"
 
-UNINFORMATIVE_DIR = "Uninformative"
+UNINFORMATIVE_DIR = "uninformative"
 
 BLOCK2_DATASETS = frozenset({"bnrep_disputed1", "bnrep_consequenceCovid"})
 GIBBS_BASE_METHODS = frozenset({"gibbs", "gibbs_instruct", "barker_gibbs", "gambling_gibbs"})
@@ -24,7 +22,64 @@ GIBBS_BASE_METHODS = frozenset({"gibbs", "gibbs_instruct", "barker_gibbs", "gamb
 LLM_EXP_PATTERN = re.compile(r"^(.+?)_temp(\d+\.?\d*)_gamma(\d+\.?\d*)$")
 MAT_EDGE_EXP_PATTERN = re.compile(r"^(.+?)_temp(\d+\.?\d*)_mr(\d+\.?\d*)$")
 EDGE_BETA_PATTERN = re.compile(r"^edge_beta(\d+\.?\d*)$")
-RUN_SUFFIX_PATTERN = re.compile(r"_(\d+)$")
+RUN_SUFFIX_PATTERN = re.compile(r"_sd(\d+)$")
+
+
+def hf_to_slug(hf: str) -> str:
+    """
+    Example: "meta-llama/Llama-3.1-8B" -> "meta-llama--Llama-3.1-8B".
+    """
+    return hf.replace("/", "--")
+
+
+def slug_to_hf(slug: str) -> str | None:
+    """
+    Example: "meta-llama--Llama-3.1-8B" -> "meta-llama/Llama-3.1-8B".
+    """
+    for hf in MODEL_NAME_TO_TYPE:
+        if hf_to_slug(hf) == slug:
+            return hf
+    return None
+
+
+def model_families() -> list[tuple[str, tuple[str, ...]]]:
+    """All base/instruct families defined in MODEL_NAME_TO_TYPE."""
+    bases = [hf for hf, kind in MODEL_NAME_TO_TYPE.items() if kind == "base"]
+    instructs = [hf for hf, kind in MODEL_NAME_TO_TYPE.items() if kind == "instruct"]
+    return [
+        (base_hf, (hf_to_slug(base_hf), hf_to_slug(instruct_hf)))
+        for base_hf, instruct_hf in zip(bases, instructs, strict=True)
+    ]
+
+
+def families_with_results(base: Path) -> list[tuple[str, tuple[str, ...]]]:
+    """Families that have at least one known model directory under ``base``."""
+    known_slugs = {
+        p.name
+        for p in base.iterdir()
+        if p.is_dir() and p.name != UNINFORMATIVE_DIR and slug_to_hf(p.name) is not None
+    }
+    return [
+        (base_hf, family_slugs)
+        for base_hf, family_slugs in model_families()
+        if any(slug in known_slugs for slug in family_slugs)
+    ]
+
+
+def to_instruct_method(method: str) -> str:
+    if method.endswith("_block2"):
+        return f"{method.removesuffix('_block2')}_instruct_block2"
+    if method in {"direct", "gibbs"}:
+        return f"{method}_instruct"
+    return method
+
+
+def canonical_method(method: str, model_slug: str) -> str:
+    hf = slug_to_hf(model_slug)
+    if hf is not None and MODEL_NAME_TO_TYPE[hf] == "instruct":
+        return to_instruct_method(method)
+    return method
+
 
 METHOD_DISPLAY = {
     "uniform": "Uniform",
@@ -96,6 +151,12 @@ PALETTE = {
 }
 
 
+def _normalize_method(method: str) -> str:
+    if method.endswith("_reasoning"):
+        return method[: -len("_reasoning")]
+    return method
+
+
 def parse_experiment(model: str, name: str) -> AlgoKey:
     """Return (model, method, temp, gamma).
 
@@ -120,8 +181,9 @@ def parse_experiment(model: str, name: str) -> AlgoKey:
 
     m = LLM_EXP_PATTERN.match(name)
     if m:
-        return (model, m.group(1), float(m.group(2)), float(m.group(3)))
-    return (model, name, None, None)
+        method = _normalize_method(m.group(1))
+        return (model, method, float(m.group(2)), float(m.group(3)))
+    return (model, _normalize_method(name), None, None)
 
 
 def load_results(base_dir: Path) -> dict[AlgoKey, list[dict]]:
@@ -130,6 +192,8 @@ def load_results(base_dir: Path) -> dict[AlgoKey, list[dict]]:
     for model_dir in sorted(base_dir.iterdir()):
         if not model_dir.is_dir():
             continue
+        if model_dir.name != UNINFORMATIVE_DIR and slug_to_hf(model_dir.name) is None:
+            continue
         for exp_dir in sorted(model_dir.iterdir()):
             if not exp_dir.is_dir():
                 continue
@@ -137,8 +201,6 @@ def load_results(base_dir: Path) -> dict[AlgoKey, list[dict]]:
             if not results_path.exists():
                 continue
             key = parse_experiment(model_dir.name, exp_dir.name)
-            if key[1] not in METHOD_DISPLAY:
-                continue
             if key[2] is not None and key[2] not in TEMP_DISPLAY:
                 continue
 
@@ -148,6 +210,39 @@ def load_results(base_dir: Path) -> dict[AlgoKey, list[dict]]:
             data["_exp_name"] = exp_dir.name
             grouped[key].append(data)
     return grouped
+
+
+def group_family_results(
+    grouped: dict[AlgoKey, list[dict]],
+    family_slugs: frozenset[str],
+    family_base: str,
+    dataset_name: str,
+    gamma: float,
+) -> dict[AlgoKey, list[dict]]:
+    """Merge base and instruct runs from the same model family into one plot key."""
+    merged: dict[AlgoKey, list[dict]] = defaultdict(list)
+
+    for key, runs in grouped.items():
+        model, method, temp, gamma_key = key
+
+        if model == UNINFORMATIVE_DIR:
+            if method in METHOD_DISPLAY and _method_allowed(method, dataset_name):
+                merged[key].extend(runs)
+            continue
+
+        if model not in family_slugs:
+            continue
+        if gamma_key is not None and gamma_key != gamma:
+            continue
+
+        plot_method = canonical_method(method, model)
+        if plot_method not in METHOD_DISPLAY or not _method_allowed(plot_method, dataset_name):
+            continue
+
+        plot_key = (family_base, plot_method, temp, gamma_key)
+        merged[plot_key].extend(runs)
+
+    return dict(merged)
 
 
 def _method_allowed(method: str, dataset_name: str) -> bool:
@@ -261,41 +356,42 @@ def make_boxplot(
     for k in keys:
         for metric_key, metric_label in metrics:
             vals = [r[metric_key] for r in grouped[k] if metric_key in r]
-            print(f"{k}: {metric_label}: {np.mean(vals):.3f}\\std{{{np.std(vals):.3f}}}")
+            print(f"{k}: {metric_label}: {np.mean(vals):.3f} ± {np.std(vals):.3f}")
 
     if save_path is not None:
         fig.savefig(save_path, dpi=200, bbox_inches="tight")
         print(f"Saved figure to {save_path}")
+    plt.close(fig)
 
 
-def main(args):
-    base = BASE_DIR / args.algorithm / args.dataset_name / f"n{args.n_samples}"
-    if not base.exists():
-        raise FileNotFoundError(f"Results directory not found: {base}")
-
-    model_dir = base / args.model
-    if not model_dir.is_dir():
-        available = sorted(
-            p.name for p in base.iterdir() if p.is_dir() and p.name != UNINFORMATIVE_DIR
-        )
-        raise FileNotFoundError(
-            f"LLM model directory not found: {model_dir}. Available: {available}"
-        )
+def plot_family(
+    base: Path,
+    dataset_name: str,
+    family_id: str,
+    family_slugs: tuple[str, ...],
+    gamma: float,
+) -> None:
+    family_base = hf_to_slug(family_id)
+    available_slugs = [slug for slug in family_slugs if (base / slug).is_dir()]
 
     grouped = load_results(base)
+    grouped = group_family_results(
+        grouped,
+        family_slugs=frozenset(family_slugs),
+        family_base=family_base,
+        dataset_name=dataset_name,
+        gamma=gamma,
+    )
 
-    # Keep: (a) uninformative baselines, (b) the selected LLM at the requested gamma.
-    grouped = {
-        key: runs
-        for key, runs in grouped.items()
-        if _method_allowed(key[1], args.dataset_name)
-        and (
-            key[0] == UNINFORMATIVE_DIR
-            or (key[0] == args.model and (key[3] is None or key[3] == args.gamma))
+    if not grouped:
+        raise FileNotFoundError(
+            f"No matching results under {base} for family={family_id!r}, gamma={gamma}"
         )
-    }
 
-    print(f"Loaded algorithms ({UNINFORMATIVE_DIR} + {args.model}, gamma={args.gamma}):")
+    print(
+        f"Loaded algorithms ({UNINFORMATIVE_DIR} + {family_id}, "
+        f"slugs={available_slugs}, gamma={gamma}):"
+    )
     for key in sorted(grouped.keys(), key=_sort_key):
         names = [f"{r['_model']}/{r['_exp_name']}" for r in grouped[key]]
         label = _label(key).replace("\n", " | ")
@@ -306,46 +402,62 @@ def main(args):
         ("roc_auc", r"AUROC ($\uparrow$)"),
     ]
 
-    title = f"{args.dataset_name.replace('bnrep_', '')}"
-    # title = f"{args.dataset_name} | n={args.n_samples} | {args.model} | γ={args.gamma}"
+    title = f"{dataset_name.replace('bnrep_', '')}"
+    plot_stem = f"boxplot_results_{family_base}_gamma{gamma}"
+    make_boxplot(grouped, metrics, title=title, save_path=base / f"{plot_stem}.png")
+    make_boxplot(grouped, metrics, title=title, save_path=base / f"{plot_stem}.pdf")
 
-    save_path = base / f"boxplot_results_{args.model}_gamma{args.gamma}.png"
-    make_boxplot(grouped, metrics, title=title, save_path=save_path)
-    save_path = base / f"boxplot_results_{args.model}_gamma{args.gamma}.pdf"
-    make_boxplot(grouped, metrics, title=title, save_path=save_path)
+
+def main(args):
+    base = BASE_DIR / args.dataset_name / f"n{args.n_samples}"
+    if not base.exists():
+        raise FileNotFoundError(f"Results directory not found: {base}")
+
+    families = families_with_results(base)
+    if not families:
+        available = sorted(p.name for p in base.iterdir() if p.is_dir())
+        raise FileNotFoundError(
+            f"No known model directories found under {base}. Available: {available}"
+        )
+
+    for family_id, family_slugs in families:
+        try:
+            plot_family(
+                base,
+                dataset_name=args.dataset_name,
+                family_id=family_id,
+                family_slugs=family_slugs,
+                gamma=args.gamma,
+            )
+        except FileNotFoundError as exc:
+            print(f"Skipping {args.dataset_name} {family_id} gamma={args.gamma}: {exc}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--algorithm", type=str, default="dag_gflownet")
     parser.add_argument("--n_samples", type=int, default=100)
+    parser.add_argument("--gamma", type=float, default=None, help="Gamma value to plot.")
+    parser.add_argument("--dataset_name", type=str, default=None, help="Single dataset to plot.")
     args = parser.parse_args()
 
-    gammas = [
-        0.1,
-        # 0.2,
-        # 0.5,
-        # 1.0,
-    ]
-    models = [
-        "Llama8B",
-        # "Llama70B",
-        # "Olmo32B",
-    ]
+    gammas = [0.5] if args.gamma is None else [args.gamma]
 
-    alg_dir = BASE_DIR / args.algorithm
-    if not alg_dir.exists():
-        raise FileNotFoundError(f"Algorithm directory not found: {alg_dir}")
+    if not BASE_DIR.exists():
+        raise FileNotFoundError(f"Results directory not found: {BASE_DIR}")
 
-    dataset_names = [d.name for d in alg_dir.iterdir() if d.is_dir()]
+    if args.dataset_name is not None:
+        dataset_names = [args.dataset_name]
+    else:
+        dataset_names = sorted(
+            d.name for d in BASE_DIR.iterdir() if d.is_dir() and (d / f"n{args.n_samples}").is_dir()
+        )
+
     for dataset in dataset_names:
         args.dataset_name = dataset
-        for model in models:
-            args.model = model
-            for gamma in gammas:
-                args.gamma = gamma
-                try:
-                    main(args)
-                except FileNotFoundError:
-                    print(f"Skipping {model} {gamma} because results not found")
-                    continue
+        for gamma in gammas:
+            args.gamma = gamma
+            try:
+                main(args)
+            except FileNotFoundError as exc:
+                print(f"Skipping {dataset} gamma={gamma}: {exc}")
+                continue

@@ -1,5 +1,5 @@
 # Structured Inference with Large Language Gibbs
-This repository contains the code for the paper "Structured Inference with Large Language Gibbs" (Under review, ICML 2026 SPIGM Workshop, paper will be available soon).
+This repository contains the code for the paper "Structured Inference with Large Language Gibbs" (Under review, accepted to [ICML 2026 SPIGM Workshop](https://openreview.net/forum?id=opXYpVQqfq), paper will be available soon).
 
 <p align="center"><img src="assets/fig1.png" width="1000"/></p>
 
@@ -67,7 +67,7 @@ uv run python sampling/make_plot.py
 
 ## Experiment3: Bayesian structure learning (§5.2)
 
-Learning directed acyclic graph (DAG) structure from data with [DAG-GFlowNet](https://github.com/tristandeleu/jax-dag-gflownet) using LLM priors.
+Learning directed acyclic graph (DAG) structure from data with [DAG-GFlowNet](https://github.com/tristandeleu/jax-dag-gflownet), using LLM-generated prior data.
 
 
 ### Basic setup
@@ -84,7 +84,6 @@ uv sync --extra structure-learning-cuda13
 # CPU (JAX without GPU)
 uv sync --extra structure-learning
 ```
-
 
 ### Usage
 
@@ -129,22 +128,43 @@ bash structure_learning/generate_llm_data_parallel.sh \
 ```
 
 
-#### Step 2: Train DAG-GFlowNet with LLM data as priors
+#### Step 2: Train DAG-GFlowNet
 
-`train_dag_gflownet.py` launches training jobs across one or more GPUs, using the data from Step 1 as the prior. It expects the prior data to exist for every requested dataset, sampling method, and seed.
+`train_dag_gflownet.py` launches training jobs across one or more GPUs.
+
+For example, the following command trains DAG-GFlowNet with the uniform prior for two datasets and three seeds:
 
 ```bash
 uv run python structure_learning/train_dag_gflownet.py \
   --gpus 0,1 \
   --jobs_per_gpu 2 \
   --datasets bnrep_knowledge bnrep_tubercolosis \
-  --sampling_methods direct gibbs \
+  --prior uniform \
+  --seeds 0 1 2
+```
+
+For the LLM data prior, `--prior llm_data`, `--llm_data_sampling_method`, and `--model_name` are required. The following command trains DAG-GFlowNet with LLM data generated with Gibbs sampling for two datasets and three seeds:
+
+```bash
+uv run python structure_learning/train_dag_gflownet.py \
+  --gpus 0,1 \
+  --jobs_per_gpu 2 \
+  --datasets bnrep_knowledge bnrep_tubercolosis \
+  --prior llm_data \
+  --llm_data_sampling_method gibbs \
   --model_name meta-llama/Llama-3.1-8B \
   --seeds 0 1 2 \
   --gammas 0.5
 ```
 
+The base prior mixed into the LLM data prior defaults to `uniform`; override it with `--llm_data_base_prior`.
+
 The results are saved under `structure_learning/results/`.
+
+After training, visualise the results with:
+```bash
+uv run python structure_learning/make_plot.py
+```
 
 
 ## Citation
