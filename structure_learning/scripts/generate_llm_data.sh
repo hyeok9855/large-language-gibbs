@@ -18,56 +18,51 @@ launch() {
     echo $! >> "$PIDFILE"
 }
 
-datasets=($1)  # bnrep_tubercolosis bnrep_knowledge bnrep_disputed1 bnrep_consequenceCovid bnrep_algalactivity2
-samplers=($2)  # (base model) direct gibbs / (instruction-tuned model) direct_instruct gibbs_instruct barker_gibbs gambling_gibbs
+datasets=($1)
+sampling_methods=($2)  # direct gibbs barker_gibbs gambling_gibbs
 PORT=$3
-llm_name=${4:-"Llama8B"}  # Llama8B, Olmo32B, Llama70B
-nseeds=${5:-3}
+llm_name=${4}  # Llama8B, Olmo32B, Llama70B
+base_or_instruct=${5}  # base, instruct
 manual_reasoning=${6:-false}
+nseeds=${7:-3}
 
-if [ "$manual_reasoning" = true ]; then
+if [ "$base_or_instruct" == "instruct" ] && [ "$manual_reasoning" = true ]; then
     manual_reasoning_option="--manual_reasoning"
 else
     manual_reasoning_option=""
 fi
 
+if [ "$base_or_instruct" == "instruct" ]; then
+    if [ "$llm_name" == "Llama70B" ]; then
+        llm_id="meta-llama/Llama-3.1-70B-Instruct"
+    elif [ "$llm_name" == "Llama8B" ]; then
+        llm_id="meta-llama/Llama-3.1-8B-Instruct"
+    elif [ "$llm_name" == "Olmo32B" ]; then
+        llm_id="allenai/Olmo-3-32B-Think"
+    elif [ "$llm_name" == "Gemma31B" ]; then
+        llm_id="google/gemma-4-31B-it"
+    fi
+else
+    if [ "$llm_name" == "Llama70B" ]; then
+        llm_id="meta-llama/Llama-3.1-70B"
+    elif [ "$llm_name" == "Llama8B" ]; then
+        llm_id="meta-llama/Llama-3.1-8B"
+    elif [ "$llm_name" == "Olmo32B" ]; then
+        llm_id="allenai/Olmo-3-1125-32B"
+    elif [ "$llm_name" == "Gemma31B" ]; then
+        llm_id="google/gemma-4-31B"
+    fi
+fi
 
 for dataset in ${datasets[@]}; do
-    for sampler in ${samplers[@]}; do
-        for seed in $(seq 1 $nseeds); do
-            if [ "$sampler" == "gibbs" ] || [ "$sampler" == "direct" ]; then
-                temp=1.0
-                sampling_method="${sampler}"
-                if [ "$llm_name" == "Llama70B" ]; then
-                    llm_id="meta-llama/Llama-3.1-70B"
-                elif [ "$llm_name" == "Llama8B" ]; then
-                    llm_id="meta-llama/Llama-3.1-8B"
-                elif [ "$llm_name" == "Olmo32B" ]; then
-                    llm_id="allenai/Olmo-3-1125-32B"
-                fi
-            else
-                if [ "$sampler" == "gibbs_instruct" ]; then
-                    temp=1.0
-                    sampling_method="gibbs"
-                elif [ "$sampler" == "barker_gibbs" ]; then
-                    temp=1.0
-                    sampling_method="barker_gibbs"
-                elif [ "$sampler" == "gambling_gibbs" ]; then
-                    temp=0.0
-                    sampling_method="gambling_gibbs"
-                elif [ "$sampler" == "direct_instruct" ]; then
-                    temp=1.0
-                    sampling_method="direct"
-                fi
-                if [ "$llm_name" == "Llama70B" ]; then
-                    llm_id="meta-llama/Llama-3.1-70B-Instruct"
-                elif [ "$llm_name" == "Llama8B" ]; then
-                    llm_id="meta-llama/Llama-3.1-8B-Instruct"
-                elif [ "$llm_name" == "Olmo32B" ]; then
-                    llm_id="allenai/Olmo-3-32B-Think"
-                fi
-            fi
+    for sampling_method in ${sampling_methods[@]}; do
+        if [ "$sampling_method" == "gambling_gibbs" ]; then
+            temp=0.0
+        else
+            temp=1.0
+        fi
 
+        for seed in $(seq 1 $nseeds); do
             ARGS="--base_url http://localhost:$PORT/v1 --model_name $llm_id --sampling_method $sampling_method --temperature $temp --n_samples 200 --top_p 1.0 --n_chains 5 --seed $seed ${manual_reasoning_option}"
             launch --dataset_name $dataset $ARGS
         done
@@ -82,4 +77,4 @@ rmdir "$SCRIPT_DIR/tmp" 2>/dev/null
 
 echo "All jobs completed."
 
-# python structure_learning/generate_llm_data.py --dataset_name bnrep_knowledge --base_url http://localhost:8000/v1 --model_name meta-llama/Llama-3.1-8B --sampling_method direct --temperature 1.0 --n_samples 200 --top_p 1.0 --n_chains 5
+# python generate_llm_data.py --dataset_name bnrep_tubercolosis --base_url http://localhost:8000/v1 --model_name meta-llama/Llama-3.1-8B --sampling_method direct --temperature 1.0 --n_samples 200 --top_p 1.0 --n_chains 5 --seed 1

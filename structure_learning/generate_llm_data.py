@@ -100,6 +100,10 @@ def main(args: Namespace) -> None:
                 template=llm_template,
                 manual_reasoning=args.manual_reasoning,
             )
+            if args.manual_reasoning:
+                llm_prior.reasoning_prompt = llm_prior.reasoning_prompt.replace(
+                    "step-by-step", "brief"
+                )
 
             if args.sampling_method == "direct":
                 prior = llm_prior
@@ -155,6 +159,8 @@ def main(args: Namespace) -> None:
                 sweep=args.sweep,
                 manual_reasoning=args.manual_reasoning,
             )
+            if args.manual_reasoning:
+                prior.reasoning_prompt = prior.reasoning_prompt.replace("step-by-step", "brief")
 
         case "gambling_gibbs":
 
@@ -203,6 +209,9 @@ def main(args: Namespace) -> None:
                 sweep=args.sweep,
                 manual_reasoning=args.manual_reasoning,
             )
+            if args.manual_reasoning:
+                prior.reasoning_prompt = prior.reasoning_prompt.replace("step-by-step", "brief")
+
         case _:
             raise ValueError(f"Invalid sampling method: {args.sampling_method}")
 
