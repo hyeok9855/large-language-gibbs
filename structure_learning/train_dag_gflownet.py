@@ -15,22 +15,11 @@ from pathlib import Path
 from typing import TextIO
 
 from structure_learning.utils.llm_data_utils import get_llm_data_run_name
-from structure_learning.utils.misc_utils import STRUCTURE_LEARNING_DIR
+from structure_learning.utils.misc_utils import MODEL_NAME_TO_TYPE, STRUCTURE_LEARNING_DIR
 
 DATASETS_DIR = STRUCTURE_LEARNING_DIR / "datasets"
 TRAIN_SCRIPT = STRUCTURE_LEARNING_DIR / "dag_gflownet" / "train.py"
 LOG_DIR = STRUCTURE_LEARNING_DIR / "tmp"
-
-LLM_IDS = {
-    ("Llama70B", "instruct"): "meta-llama/Llama-3.1-70B-Instruct",
-    ("Llama8B", "instruct"): "meta-llama/Llama-3.1-8B-Instruct",
-    ("Olmo32B", "instruct"): "allenai/Olmo-3-32B-Think",
-    ("Gemma31B", "instruct"): "google/gemma-4-31B-it",
-    ("Llama70B", "base"): "meta-llama/Llama-3.1-70B",
-    ("Llama8B", "base"): "meta-llama/Llama-3.1-8B",
-    ("Olmo32B", "base"): "allenai/Olmo-3-1125-32B",
-    ("Gemma31B", "base"): "google/gemma-4-31B",
-}
 
 DATASET_PARAMS = {
     "bnrep_tubercolosis": {"burnin": 100, "thinning": 10, "block_size": 1, "sweep": True},
@@ -61,15 +50,13 @@ def parse_gpus(value: str) -> list[int]:
 def build_data_path(
     dataset_name: str,
     sampling_method: str,
-    llm_name: str,
-    base_or_instruct: str,
+    model_name: str,
     seed: int,
     manual_reasoning: bool,
 ) -> Path:
     params = DATASET_PARAMS[dataset_name]
     temp = 0.0 if sampling_method == "gambling_gibbs" else 1.0
     filename = get_llm_data_run_name(
-        model_name=LLM_IDS[(llm_name, base_or_instruct)],
         sampling_method=sampling_method,
         temperature=temp,
         top_p=1.0,
@@ -81,19 +68,22 @@ def build_data_path(
         sweep=params["sweep"],
         manual_reasoning=manual_reasoning,
     )
-    return DATASETS_DIR / dataset_name / "llm_data" / f"{filename}.csv"
+    return (
+        DATASETS_DIR / dataset_name / "llm_data" / model_name.replace("/", "--") / f"{filename}.csv"
+    )
 
 
 def build_exp_name(
-    llm_name: str,
+    model_name: str,
     sampling_method: str,
     gamma: float,
     seed: int,
     manual_reasoning: bool,
 ) -> str:
+    model_slug = model_name.replace("/", "--")
     reasoning_suffix = "_reasoning" if manual_reasoning else ""
     temp = 0.0 if sampling_method == "gambling_gibbs" else 1.0
-    return f"{llm_name}/{sampling_method}{reasoning_suffix}_temp{temp}_gamma{gamma}_sd{seed}"
+    return f"{model_slug}/{sampling_method}{reasoning_suffix}_temp{temp}_gamma{gamma}_sd{seed}"
 
 
 def log_path_for(experiment: Experiment, gpu: int) -> Path:
@@ -112,13 +102,12 @@ def iter_experiments(args: argparse.Namespace) -> list[Experiment]:
                     data_path = build_data_path(
                         dataset_name=dataset_name,
                         sampling_method=sampling_method,
-                        llm_name=args.llm_name,
-                        base_or_instruct=args.base_or_instruct,
+                        model_name=args.model_name,
                         seed=seed,
                         manual_reasoning=args.manual_reasoning,
                     )
                     exp_name = build_exp_name(
-                        llm_name=args.llm_name,
+                        model_name=args.model_name,
                         sampling_method=sampling_method,
                         gamma=gamma,
                         seed=seed,
@@ -345,16 +334,10 @@ if __name__ == "__main__":
         help="LLM sampling methods used to generate prior data.",
     )
     parser.add_argument(
-        "--llm_name",
-        choices=["Llama8B", "Olmo32B", "Llama70B", "Gemma31B"],
+        "--model_name",
+        type=str,
         required=True,
-        help="Short LLM name.",
-    )
-    parser.add_argument(
-        "--base_or_instruct",
-        choices=["base", "instruct"],
-        required=True,
-        help="Whether to use base or instruct model checkpoints.",
+        help="HuggingFace model name, e.g. meta-llama/Llama-3.1-8B.",
     )
     parser.add_argument(
         "--manual_reasoning",
@@ -366,7 +349,7 @@ if __name__ == "__main__":
         nargs="+",
         type=int,
         required=True,
-        help="Data seeds, e.g. 1 2 3.",
+        help="Data seeds, e.g. 0 1 2.",
     )
     parser.add_argument(
         "--gammas",
@@ -399,6 +382,17 @@ if __name__ == "__main__":
         help="Print planned jobs without launching them.",
     )
     args = parser.parse_args()
+
+    if args.model_name not in MODEL_NAME_TO_TYPE:
+        raise ValueError(
+            f"Unknown model_name: {args.model_name!r}. "
+            f"Add it to MODEL_NAME_TO_TYPE in structure_learning/utils/misc_utils.py."
+        )
+    if args.manual_reasoning and MODEL_NAME_TO_TYPE[args.model_name] != "instruct":
+        raise ValueError(
+            f"Manual reasoning is only supported for instruct models; "
+            f"got {MODEL_NAME_TO_TYPE[args.model_name]!r} model {args.model_name!r}."
+        )
 
     try:
         main(args)

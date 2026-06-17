@@ -334,7 +334,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.base_url is None:
-        assert args.port is not None, "Either base_url or port must be provided."
+        if args.port is None:
+            raise ValueError("Either base_url or port must be provided.")
         args.base_url = f"http://localhost:{args.port}/v1"
 
     os.environ["OPENAI_API_KEY"] = args.api_key

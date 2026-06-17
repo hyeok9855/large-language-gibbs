@@ -31,7 +31,9 @@ def build_schema(meta: dict) -> dict:
 
 def main(args: Namespace) -> None:
     dataset_meta_path = DATASETS_DIR / args.dataset_name / "meta_data.json"
-    llm_output_dir = DATASETS_DIR / args.dataset_name / "llm_data"
+    llm_output_dir = (
+        DATASETS_DIR / args.dataset_name / "llm_data" / args.model_name.replace("/", "--")
+    )
 
     llm_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -44,7 +46,6 @@ def main(args: Namespace) -> None:
         args.burn_in = min(1000, 10 * args.thinning)
 
     filename = get_llm_data_run_name(
-        model_name=args.model_name,
         sampling_method=args.sampling_method,
         temperature=args.temperature,
         top_p=args.top_p,
@@ -136,6 +137,9 @@ def main(args: Namespace) -> None:
 
         case "barker_gibbs":
 
+            if args.model_type != "instruct":
+                raise ValueError("Barker prior only supports instruct LLM type")
+
             def barker_template(
                 option1: dict[str, Any],
                 option2: dict[str, Any],
@@ -182,7 +186,8 @@ def main(args: Namespace) -> None:
 
         case "gambling_gibbs":
 
-            assert args.model_type == "instruct", "Gambling prior only supports instruct LLM type"
+            if args.model_type != "instruct":
+                raise ValueError("Gambling prior only supports instruct LLM type")
 
             def gambling_template(
                 option1: dict[str, Any],
@@ -290,16 +295,24 @@ if __name__ == "__main__":
             raise ValueError("Either base_url or port must be provided.")
         args.base_url = f"http://localhost:{args.port}/v1"
 
-    if args.manual_reasoning and args.temperature == 0.0:
-        warnings.warn("Manual reasoning requires temperature > 0.0, setting temperature to 1.0")
-        args.temperature = 1.0
+    os.environ["OPENAI_API_KEY"] = args.api_key
 
     random.seed(args.seed)
     np.random.seed(args.seed)
 
     args.model_type = MODEL_NAME_TO_TYPE[args.model_name]
 
-    os.environ["OPENAI_API_KEY"] = args.api_key
+    # Manual reasoning is only supported for instruct models.
+    if args.manual_reasoning and args.model_type != "instruct":
+        warnings.warn(
+            f"Manual reasoning is only supported for instruct models; "
+            f"disabling it for {args.model_type} model '{args.model_name}'."
+        )
+        args.manual_reasoning = False
+
+    if args.manual_reasoning and args.temperature == 0.0:
+        warnings.warn("Manual reasoning requires temperature > 0.0, setting temperature to 1.0")
+        args.temperature = 1.0
 
     main(args)
     print("Done!")

@@ -24,7 +24,7 @@ Sampling from simple distributions like a uniform and a Gaussian distribution.
 
 ### Basic setup
 
-The experiments query an OpenAI-compatible chat/completions API.
+This experiment queries an OpenAI-compatible chat/completions API.
 
 - Local server: pass `--port`; the script uses `http://localhost:<port>/v1`.
 - Remote server: pass both `--base_url` and `--api_key`.
@@ -96,9 +96,67 @@ To test with other datasets from [pgmpy](https://github.com/pgmpy/pgmpy), use `s
 
 #### Step 1: Generate synthetic data using LLMs
 
+This step queries an OpenAI-compatible chat/completions API.
 
-... an OpenAI-compatible chat/completions API is required ...
+- Local server: pass `--port`; the script uses `http://localhost:<port>/v1`.
+- Remote server: pass both `--base_url` and `--api_key`.
+
+Known model names are listed in `structure_learning/utils/misc_utils.py`; if your model is not listed, you should add it to the dictionary.
+
+
+Assuming a local server on port 8000 serving `meta-llama/Llama-3.1-8B`, generate prior data for the `bnrep_knowledge` dataset with Gibbs sampling:
+
+```bash
+uv run python structure_learning/generate_llm_data.py \
+  --dataset_name bnrep_knowledge \
+  --model_name meta-llama/Llama-3.1-8B \
+  --port 8000 \
+  --sampling_method gibbs \
+  --temperature 1.0 \
+  --n_samples 200 \
+  --n_chains 5 \
+  --block_size 1 \
+  --seed 0
+```
+
+The samples are written to `structure_learning/datasets/<dataset_name>/llm_data/`. Existing files are not overwritten; matching runs are skipped.
+
+`generate_llm_data_parallel.sh` launches generation jobs for multiple datasets, sampling methods, and seeds in parallel. The arguments are: datasets, sampling methods, model name, port, `manual_reasoning` (default `false`), and number of seeds (default `3`). For example (3 seeds):
+
+```bash
+bash structure_learning/generate_llm_data_parallel.sh \
+  "bnrep_knowledge bnrep_tubercolosis" "direct gibbs" meta-llama/Llama-3.1-8B 8000 false 3
+```
 
 
 #### Step 2: Train DAG-GFlowNet with LLM data as priors
 
+`train_dag_gflownet.py` launches training jobs across one or more GPUs, using the data from Step 1 as the prior. It expects the prior data to exist for every requested dataset, sampling method, and seed.
+
+```bash
+uv run python structure_learning/train_dag_gflownet.py \
+  --gpus 0,1 \
+  --jobs_per_gpu 2 \
+  --datasets bnrep_knowledge bnrep_tubercolosis \
+  --sampling_methods direct gibbs \
+  --model_name meta-llama/Llama-3.1-8B \
+  --seeds 0 1 2 \
+  --gammas 0.5
+```
+
+The results are saved under `structure_learning/results/`.
+
+
+## Citation
+
+If you find this work useful, please cite:
+
+```bibtex
+@inproceedings{choi2026structured,
+    title={Structured Inference with Large Language Gibbs},
+    author={Sanghyeok Choi and Henry Gouk and Esmeralda S. Whitammer},
+    booktitle={ICML 2026 Workshop on Structured Probabilistic Inference {\&} Generative Modeling},
+    year={2026},
+    url={https://openreview.net/forum?id=opXYpVQqfq}
+}
+```

@@ -1,6 +1,5 @@
 def get_llm_data_run_name(
     *,
-    model_name: str,
     sampling_method: str,
     temperature: float,
     top_p: float,
@@ -12,7 +11,7 @@ def get_llm_data_run_name(
     sweep: bool = True,
     manual_reasoning: bool = False,
 ) -> str:
-    run_name = f"{model_name.replace('/', '--')}_{sampling_method}_temp{temperature}_topp{top_p}"
+    run_name = f"{sampling_method}_temp{temperature}_topp{top_p}"
     if "gibbs" in sampling_method:
         if burn_in is None or thinning is None:
             raise ValueError("burn_in and thinning are required for non-direct sampling methods")

@@ -1,13 +1,15 @@
 from pathlib import Path
 import json
 
-MODEL_NAME_TO_TYPE: dict[str, str] = {
+MODEL_NAME_TO_TYPE = {
     "meta-llama/Llama-3.1-8B": "base",
     "meta-llama/Llama-3.1-8B-Instruct": "instruct",
     "meta-llama/Llama-3.1-70B": "base",
     "meta-llama/Llama-3.1-70B-Instruct": "instruct",
     "allenai/Olmo-3-1125-32B": "base",
     "allenai/Olmo-3-32B-Think": "instruct",
+    "google/gemma-4-31B": "base",
+    "google/gemma-4-31B-it": "instruct",
 }
 
 STRUCTURE_LEARNING_DIR = Path(__file__).parent.parent
