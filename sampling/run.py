@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import random
 
 from priorbot.llm import OpenAICompatLLM
@@ -59,7 +60,7 @@ def main(args: argparse.Namespace):
                 base_url=args.base_url,
                 system_prompt=system_prompt,
                 temperature=args.temperature,
-                max_tokens=20 + (1024 if args.manual_reasoning else 0),
+                max_tokens=32 + (1024 if args.manual_reasoning else 0),
             )
             indep_template, indep_schema = create_template_and_schema("indep", args)
             indep_prior = LLMPrior(
@@ -98,7 +99,7 @@ def main(args: argparse.Namespace):
                 base_url=args.base_url,
                 system_prompt=system_prompt,
                 temperature=args.temperature,
-                max_tokens=args.n_samples_per_chain * 15 + (1024 if args.manual_reasoning else 0),
+                max_tokens=args.n_samples_per_chain * 32 + (1024 if args.manual_reasoning else 0),
             )
             batch_template, batch_schema = create_template_and_schema("batch", args)
             batch_prior = LLMPrior(
@@ -139,7 +140,7 @@ def main(args: argparse.Namespace):
                 base_url=args.base_url,
                 system_prompt=system_prompt,
                 temperature=args.temperature,
-                max_tokens=args.gibbs_k_vars * 20 + (1024 if args.manual_reasoning else 0),
+                max_tokens=args.gibbs_k_vars * 32 + (1024 if args.manual_reasoning else 0),
             )
 
             gibbs_template, gibbs_schema = create_template_and_schema("gibbs", args)
@@ -192,7 +193,7 @@ def main(args: argparse.Namespace):
                 base_url=args.base_url,
                 system_prompt=system_prompt,
                 temperature=1.0,
-                max_tokens=20 + (1024 if args.manual_reasoning else 0),
+                max_tokens=32 + (1024 if args.manual_reasoning else 0),
             )
             barker_template, gibbs_schema = create_template_and_schema("barker", args)
             barker_gibbs_prior = BarkerGibbsLLMPrior(
@@ -241,7 +242,7 @@ def main(args: argparse.Namespace):
                 base_url=args.base_url,
                 system_prompt=system_prompt,
                 temperature=0.0 if not args.manual_reasoning else 1.0,
-                max_tokens=20 + (1024 if args.manual_reasoning else 0),
+                max_tokens=32 + (1024 if args.manual_reasoning else 0),
             )
             gambling_template, gibbs_schema = create_template_and_schema("gambling", args)
             gambling_gibbs_prior = GamblingGibbsLLMPrior(

@@ -20,7 +20,7 @@ def create_template_and_schema(
 
             def template(schema: dict[str, Any], observed=None) -> str:
                 return (
-                    f"Draw a random sample from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}.\n"
+                    f"Draw a random sample from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}. "
                     f"Respond with JSON that follows this schema: {json.dumps(schema)}"
                 )
 
@@ -51,7 +51,7 @@ def create_template_and_schema(
 
             def template(schema: dict[str, Any], observed=None) -> str:
                 return (
-                    f"Draw {n_samples_per_chain} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}.\n"
+                    f"Draw {n_samples_per_chain} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}. "
                     f"Respond with JSON that follows this schema: {json.dumps(schema)}"
                 )
 
@@ -115,19 +115,19 @@ def create_template_and_schema(
             def template(schema: dict[str, Any], observed: dict[str, Any] | None = None) -> str:
                 if observed is None:
                     return (
-                        f"Draw {k_vars} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}.\n"
+                        f"Draw {k_vars} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}. "
                         f"Respond with JSON that follows this schema: {json.dumps(schema)}"
                     )
 
                 n_missing = len(schema["properties"])
                 _template = (
-                    f"You are generating {k_vars} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}.\n"
-                    f"You have already observed {len(observed)} iid samples: {json.dumps(observed)}.\n"
+                    f"You are generating {k_vars} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}. "
+                    f"You have already observed {len(observed)} iid samples: {json.dumps(observed)}\n"
                 )
                 _template += (
-                    f"Draw another set of {n_missing} iid random samples from the same distribution. Respond with JSON that follows this schema: {json.dumps(schema)}\n"
+                    f"Draw another set of {n_missing} iid random samples from the same distribution. Respond with JSON that follows this schema: {json.dumps(schema)}"
                     if n_missing > 1
-                    else f"Draw another random sample from the same distribution. Respond with JSON that follows this schema: {json.dumps(schema)}\n"
+                    else f"Draw another random sample from the same distribution. Respond with JSON that follows this schema: {json.dumps(schema)}"
                 )
                 return _template
 
@@ -146,19 +146,16 @@ def create_template_and_schema(
             output_schema: dict[str, Any],
             observed: dict[str, Any] | None = None,
         ) -> str:
-            _template = (
-                f"You are generating iid samples from a uniform distribution over the integers "
-                f"in {{0, 1, ..., {maxnum}}}.\n"
-            )
+            _template = f"You are generating {k_vars} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}. "
             if observed:
-                _template += f"You have already observed: {json.dumps(observed)}.\n"
+                _template += f"You have already observed {len(observed)} iid samples: {json.dumps(observed)}\n"
             option1_str = json.dumps(option1)
             option2_str = json.dumps(option2)
             _template += (
                 "Which of the following two candidates is more likely to be the iid sample from the distribution?\n"
                 f"Option 1: {option1_str}\n"
                 f"Option 2: {option2_str}\n"
-                f"Respond with JSON that follows this schema: {json.dumps(output_schema)}."
+                f"Respond with JSON that follows this schema: {json.dumps(output_schema)}"
             )
             return _template
 
@@ -174,12 +171,9 @@ def create_template_and_schema(
             bet_value: float,
             observed: dict[str, Any] | None = None,
         ) -> str:
-            _template = (
-                f"You are generating iid samples from a uniform distribution over the integers "
-                f"in {{0, 1, ..., {maxnum}}}.\n"
-            )
+            _template = f"You are generating {k_vars} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}. "
             if observed:
-                _template += f"You have already observed: {json.dumps(observed)}.\n"
+                _template += f"You have already observed {len(observed)} iid samples: {json.dumps(observed)}\n"
             option1_str = json.dumps(option1)
             option2_str = json.dumps(option2)
             _template += (
@@ -189,7 +183,7 @@ def create_template_and_schema(
                 "One of these is more plausible under the distribution than the other. "
                 f"You may place a bet of ${bet_value} that Option 1 is more plausible than Option 2, "
                 "which will pay out $100 if you are correct. Your aim is to maximise expected profit.\n"
-                f"Respond with JSON that follows this schema: {json.dumps(output_schema)}."
+                f"Respond with JSON that follows this schema: {json.dumps(output_schema)}"
             )
             return _template
 
