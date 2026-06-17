@@ -64,6 +64,78 @@ uv run python sampling/make_plot.py
 
 ## Experiment2: Consistent reasoning tasks (§5.1)
 
+Evaluating unsupervised elicitation algorithms on common misconceptions (TruthfulQA), math (GSM8k-verification), and helpfulness reward modeling (Alpaca) using transition operators and joint probability scoring functions.
+
+### Basic setup
+
+This experiment requires additional dependencies beyond the base project install. Sync them using `uv`:
+
+```bash
+uv sync --extra consistent-reasoning
+```
+
+#### API for Pretrained Base Models
+
+You should have access to an OpenAI-compatible API for pretrained base models that can return top-K token logprobs (specifically 20). 
+
+We recommend deploying models using [vLLM](https://github.com/vllm-project/vllm). For example, to host `meta-llama/Llama-3.1-8B` locally:
+```bash
+vllm serve meta-llama/Llama-3.1-8B --port 8000
+```
+
+- **Port & URL Configuration**:
+  - The Gibbs sampling, Zero-shot, N-Pass, Barker, and Gambling algorithms pass the `--port` argument to query `http://localhost:<port>/v1`.
+  - The ICM algorithm queries via `ModelAPI` which checks the `LLAMA_API_BASE` environment variable (defaulting to `http://localhost:8000/v1`). If you are running the API on a custom port, make sure to set the environment variable:
+    ```bash
+    export LLAMA_API_BASE=http://localhost:<your_port>/v1
+    ```
+
+> [!TIP]
+> We highly recommend activating prefix caching (`--enable-prefix-caching` in vLLM) to accelerate experiments, as the MCMC algorithms generate many queries sharing large common prompt prefixes.
+
+### Data Preparation
+
+1. Download the pre-processed datasets from [Google Drive](https://drive.google.com/file/d/1AJdFJO9IHfOnWHyIlGvInyndLu6EvcfV/view?usp=sharing).
+2. Create a `data/` folder in the root of the repository and extract the files there. You should have:
+   - `data/train_truthfulqa.json`
+   - `data/train_gsm8k.json`
+   - `data/train_alpaca.json`
+
+The fixed evaluation set json descriptors (e.g. `truthfulQA.json`, `gsm8k.json`) are already pre-configured under the `eval_sets/` directory.
+
+### Usage
+
+Run evaluations across multiple algorithms and testbeds using the unified driver script `consistent_reasoning.run_eval`.
+
+For example, to run Gibbs sampling on TruthfulQA with 5 partitions:
+```bash
+uv run python -m consistent_reasoning.run_eval \
+  --testbed truthfulQA \
+  --algorithm gibbs \
+  --model meta-llama/Llama-3.1-8B \
+  --port 8000 \
+  --temperature 1.0 \
+  --n_partitions 5 \
+  --num_workers 4
+```
+
+#### Key Arguments
+
+- `--algorithm`: The elicitation algorithm to evaluate. Choices are:
+  - `zeroshot`: Standard zero-shot base baseline.
+  - `npass`: N-pass sequential voting baseline (default `--n_passes 4`).
+  - `gibbs`: Joint Gibbs sampling MCMC search.
+  - `barker_gibbs`: Barker Gibbs MCMC variant.
+  - `gambling_gibbs`: Gambling Gibbs MCMC variant (supports step-by-step reasoning with `--manual_reasoning` for instruct models).
+  - `icm`: Iterated Conditional Modes (ICM) simulated annealing search.
+- `--testbed`: Dataset name (`truthfulQA`, `gsm8k`, `alpaca`).
+- `--model`: Model name registered on the server (e.g., `meta-llama/Llama-3.1-8B`).
+- `--port`: The local port of the OpenAI-compatible vLLM server (default `8000`).
+- `--n_partitions`: Number of random evaluation partitions to run (default `5`).
+- `--num_workers`: Number of chunks/partitions to execute concurrently (default `1`).
+- `--chunk_size_cis`: Size of dataset chunks for partition evaluation (default `16`).
+
+The evaluation driver automatically caches intermediate queries and results in `--output_dir` (defaults to `results/<testbed>/<algorithm>_...`). Existing results will not be rerun.
 
 ## Experiment3: Bayesian structure learning (§5.2)
 

@@ -24,6 +24,11 @@ structure-learning = [
     "jraph>=0.0.6.dev0",
 ]
 
+consistent-reasoning = [
+    "requests>=2.32.0",
+    "tiktoken>=0.8.0",
+]
+
 structure-learning-cuda12 = [
     "large-language-gibbs[structure-learning]",
     "jax[cuda12]>=0.9.1",
