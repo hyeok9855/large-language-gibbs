@@ -141,7 +141,7 @@ def load_results(base_dir: Path) -> dict[AlgoKey, list[dict]]:
     for model_dir in sorted(base_dir.iterdir()):
         if not model_dir.is_dir():
             continue
-        if model_dir.name != "uninformati" and slug_to_hf(model_dir.name) is None:
+        if model_dir.name != "uninformative" and slug_to_hf(model_dir.name) is None:
             continue
         for exp_dir in sorted(model_dir.iterdir()):
             if not exp_dir.is_dir():
@@ -174,7 +174,7 @@ def group_family_results(
     for key, runs in grouped.items():
         model, method, temp, gamma_key = key
 
-        if model == "uninformati":
+        if model == "uninformative":
             if method in METHOD_DISPLAY:
                 merged[key].extend(runs)
             continue
