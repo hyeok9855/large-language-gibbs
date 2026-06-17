@@ -17,11 +17,88 @@ First, run the following command to install the dependencies (this will automati
 uv sync
 ```
 
-## Experiments
-We have three sets of experiments:
 
-1. Sampling from simple distributions (§4)
-2. Consistent reasoning (§5.1)
-3. Bayesian structure learning (§5.2)
+## Experiment1: Sampling from simple distributions (§4)
 
-See README.md in each subdirectory for more details.
+Sampling from simple distributions like a uniform and a Gaussian distribution.
+
+### Basic setup
+
+The experiments query an OpenAI-compatible chat/completions API.
+
+- Local server: pass `--port`; the script uses `http://localhost:<port>/v1`.
+- Remote server: pass both `--base_url` and `--api_key`.
+
+Known model names are listed in `utils.py`; if your model is not listed, you should add it to the dictionary.
+
+### Usage
+
+We assume that you have a local server running on port 8000, with the model `meta-llama/Llama-3.1-8B`, and the target is the Gaussian distribution.
+
+Run a single seed using Gibbs sampling:
+
+```bash
+uv run python sampling/run.py \
+  --target gaussian \
+  --model_name meta-llama/Llama-3.1-8B \
+  --port 8000 \
+  --seed 0
+  --methods gibbs
+```
+
+Existing result files are not overwritten; matching runs are skipped.
+
+`run_multiseed.sh` launches experiments for multiple methods and seeds in parallel: independent and batch sampling, Gibbs with block sizes 1 and 4, and Barker/Gambling variants (only when using an instruct model). For example (5 seeds):
+```bash
+bash sampling/run_multiseed.sh gaussian meta-llama/Llama-3.1-8B 8000 5
+```
+
+The script starts many jobs concurrently, so make sure the backing API server can handle the requested load.
+
+After sampling, visualise the results with:
+
+```bash
+uv run python sampling/make_plot.py
+```
+
+
+## Experiment2: Consistent reasoning tasks (§5.1)
+
+
+## Experiment3: Bayesian structure learning (§5.2)
+
+Learning directed acyclic graph (DAG) structure from data with [DAG-GFlowNet](https://github.com/tristandeleu/jax-dag-gflownet) using LLM priors.
+
+
+### Basic setup
+
+This experiment requires additional dependencies beyond the base project install. Run one of the following commands depending on your system's CUDA version:
+
+```bash
+# GPU with CUDA 12
+uv sync --extra structure-learning-cuda12
+
+# GPU with CUDA 13
+uv sync --extra structure-learning-cuda13
+
+# CPU (JAX without GPU)
+uv sync --extra structure-learning
+```
+
+
+### Usage
+
+#### Step 0: Download datasets
+
+The datasets and meta-data files used in the paper are provided in the `structure_learning/datasets`.
+To test with other datasets from [pgmpy](https://github.com/pgmpy/pgmpy), use `structure_learning/get_pgmpy_dataset.py` to download and save the datasets. Note that you should modify `meta_data.json` for each dataset appropriately to give LLMs enough information about the dataset.
+
+
+#### Step 1: Generate synthetic data using LLMs
+
+
+... an OpenAI-compatible chat/completions API is required ...
+
+
+#### Step 2: Train DAG-GFlowNet with LLM data as priors
+

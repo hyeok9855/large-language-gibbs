@@ -9,10 +9,12 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+from structure_learning.utils.misc_utils import STRUCTURE_LEARNING_DIR
+
 # (model, method, temp, gamma) — temp and gamma are None for uninformative priors
 AlgoKey = tuple[str, str, float | None, float | None]
 
-BASE_DIR = Path(__file__).parent / "output"
+BASE_DIR = STRUCTURE_LEARNING_DIR / "results"
 
 UNINFORMATIVE_DIR = "Uninformative"
 

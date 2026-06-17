@@ -15,10 +15,10 @@ from structure_learning.dag_gflownet.utils.gflownet import posterior_estimate
 
 from structure_learning.utils.eval_utils import expected_shd, expected_edges, threshold_metrics
 from structure_learning.utils.score_utils import get_scorer
+from structure_learning.utils.misc_utils import STRUCTURE_LEARNING_DIR
 
 
-BASE_FOLDER = Path(__file__).parent.parent.parent
-OUTPUT_FOLDER = BASE_FOLDER / "output" / "dag_gflownet"
+OUTPUT_FOLDER = STRUCTURE_LEARNING_DIR / "results"
 
 
 def main(args):

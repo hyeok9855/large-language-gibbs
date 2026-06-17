@@ -3,7 +3,6 @@ import math
 import os
 import random
 from argparse import ArgumentParser, Namespace
-from pathlib import Path
 from typing import Any
 import warnings
 
@@ -19,6 +18,7 @@ from structure_learning.utils.prompt_utils import (
     get_feature_description,
 )
 from structure_learning.utils.misc_utils import DATASETS_DIR, MODEL_NAME_TO_TYPE, load_meta
+from structure_learning.utils.llm_data_utils import get_llm_data_run_name
 
 
 def build_schema(meta: dict) -> dict:
@@ -42,6 +42,24 @@ def main(args: Namespace) -> None:
         args.thinning = math.ceil((n_features * 2) / args.block_size)
     if args.burn_in is None:
         args.burn_in = min(1000, 10 * args.thinning)
+
+    filename = get_llm_data_run_name(
+        model_name=args.model_name,
+        sampling_method=args.sampling_method,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        n_samples=args.n_samples,
+        seed=args.seed,
+        burn_in=args.burn_in,
+        thinning=args.thinning,
+        block_size=args.block_size,
+        sweep=args.sweep,
+        manual_reasoning=args.manual_reasoning,
+    )
+    output_path = llm_output_dir / f"{filename}.csv"
+    if output_path.exists():
+        print(f"Skipping: {output_path} already exists")
+        return
 
     schema = build_schema(meta)
     system_prompt = (
@@ -234,22 +252,8 @@ def main(args: Namespace) -> None:
     if args.dataset_name in ["bnrep_knowledge"]:
         df = df.rename(columns={"C#": "C"})
 
-    # Saving
-    run_name = f"{args.model_name.replace('/', '--')}_{args.sampling_method}_temp{args.temperature}_topp{args.top_p}"
-    if args.sampling_method != "direct":
-        run_name += f"_burnin{args.burn_in}_thinning{args.thinning}"
-
-    # Only tag non-default block / sweep settings so vanilla Gibbs filenames remain
-    # unchanged and existing results are not shadowed by new block/sweep runs.
-    if "gibbs" in args.sampling_method:
-        if args.block_size != 1:
-            run_name += f"_block{args.block_size}"
-    if args.manual_reasoning:
-        run_name += "_reasoning"
-    run_name += f"_n{args.n_samples}_sd{args.seed}"
-
-    df.to_csv(llm_output_dir / f"{run_name}.csv", index=False)
-    print(f"Saved {len(df)} samples to {llm_output_dir / run_name}")
+    df.to_csv(output_path, index=False)
+    print(f"Saved {len(df)} samples to {output_path}")
 
 
 if __name__ == "__main__":
