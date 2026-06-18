@@ -99,7 +99,7 @@ def build_exp_name(
 
 def build_uninformative_exp_name(prior: str, seed: int, edge_beta: float) -> str:
     name = f"edge_beta{edge_beta}" if prior == "edge" else prior
-    return f"Uninformative/{name}_sd{seed}"
+    return f"uninformative/{name}_sd{seed}"
 
 
 def log_path_for(experiment: Experiment, gpu: int) -> Path:
@@ -139,30 +139,31 @@ def iter_experiments(args: argparse.Namespace) -> list[Experiment]:
                 )
                 continue
             for gamma in args.gammas:
-                experiments.append(
-                    Experiment(
-                        dataset_name=dataset_name,
-                        prior=prior,
-                        llm_data_sampling_method=args.llm_data_sampling_method,
-                        llm_data_base_prior=args.llm_data_base_prior,
-                        gamma=gamma,
-                        seed=seed,
-                        data_path=build_data_path(
+                for sampling_method in args.llm_data_sampling_methods:
+                    experiments.append(
+                        Experiment(
                             dataset_name=dataset_name,
-                            sampling_method=args.llm_data_sampling_method,
-                            model_name=args.model_name,
-                            seed=seed,
-                            manual_reasoning=args.manual_reasoning,
-                        ),
-                        exp_name=build_exp_name(
-                            model_name=args.model_name,
-                            sampling_method=args.llm_data_sampling_method,
+                            prior=prior,
+                            llm_data_sampling_method=sampling_method,
+                            llm_data_base_prior=args.llm_data_base_prior,
                             gamma=gamma,
                             seed=seed,
-                            manual_reasoning=args.manual_reasoning,
-                        ),
+                            data_path=build_data_path(
+                                dataset_name=dataset_name,
+                                sampling_method=sampling_method,
+                                model_name=args.model_name,
+                                seed=seed,
+                                manual_reasoning=args.manual_reasoning,
+                            ),
+                            exp_name=build_exp_name(
+                                model_name=args.model_name,
+                                sampling_method=sampling_method,
+                                gamma=gamma,
+                                seed=seed,
+                                manual_reasoning=args.manual_reasoning,
+                            ),
+                        )
                     )
-                )
     return experiments
 
 
@@ -246,7 +247,7 @@ class GpuJobPool:
             f"Launched pid={process.pid} on GPU {gpu}: "
             f"{experiment.dataset_name} {experiment.label} "
             f"gamma={experiment.gamma} seed={experiment.seed} "
-            f"log={log_path}",
+            f"\nlog file: {log_path}",
             flush=True,
         )
 
@@ -386,10 +387,11 @@ if __name__ == "__main__":
         "or llm_data.",
     )
     parser.add_argument(
-        "--llm_data_sampling_method",
-        choices=sorted(LLM_DATA_SAMPLING_METHODS),
+        "--llm_data_sampling_methods",
+        nargs="+",
         default=None,
-        help="Sampling method of the LLM prior data (required when --prior llm_data).",
+        choices=LLM_DATA_SAMPLING_METHODS,
+        help="Sampling methods of the LLM prior data (required when --prior llm_data).",
     )
     parser.add_argument(
         "--llm_data_base_prior",
@@ -454,8 +456,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.prior == "llm_data":
-        if args.llm_data_sampling_method is None:
-            raise ValueError("--llm_data_sampling_method is required when --prior llm_data.")
+        if args.llm_data_sampling_methods is None:
+            raise ValueError("--llm_data_sampling_methods is required when --prior llm_data.")
         if args.model_name is None:
             raise ValueError("--model_name is required when --prior llm_data.")
         if args.model_name not in MODEL_NAME_TO_TYPE:

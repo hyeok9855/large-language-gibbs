@@ -61,5 +61,3 @@ rm -f "$PIDFILE"
 rmdir "$SCRIPT_DIR/tmp" 2>/dev/null
 
 echo "All jobs completed."
-
-# python generate_llm_data.py --dataset_name bnrep_tubercolosis --base_url http://localhost:8000/v1 --model_name meta-llama/Llama-3.1-8B --sampling_method direct --temperature 1.0 --n_samples 200 --top_p 1.0 --n_chains 5 --seed 1
