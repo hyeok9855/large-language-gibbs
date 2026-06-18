@@ -1,5 +1,5 @@
 # Structured Inference with Large Language Gibbs
-This repository contains the code for the paper "Structured Inference with Large Language Gibbs" (Under review, accepted to [ICML 2026 SPIGM Workshop](https://openreview.net/forum?id=opXYpVQqfq), paper will be available soon).
+This repository contains the code for the paper "[Structured Inference with Large Language Gibbs](https://arxiv.org/abs/2606.19264)" (Under review, accepted to [ICML 2026 SPIGM Workshop](https://openreview.net/forum?id=opXYpVQqfq)).
 
 <p align="center"><img src="assets/fig1.png" width="1000"/></p>
 
@@ -244,11 +244,10 @@ uv run python structure_learning/make_plot.py
 If you find this work useful, please cite:
 
 ```bibtex
-@inproceedings{choi2026structured,
-    title={Structured Inference with Large Language Gibbs},
-    author={Sanghyeok Choi and Henry Gouk and Esmeralda S. Whitammer},
-    booktitle={ICML 2026 Workshop on Structured Probabilistic Inference {\&} Generative Modeling},
+@article{choi2026structured,
+    title={Structured Inference with Large Language {Gibbs}},
+    author={Choi, Sanghyeok and Gouk, Henry and Whitammer, Esmeralda S.},
+    journal={arXiv preprint arXiv:2606.19264},
     year={2026},
-    url={https://openreview.net/forum?id=opXYpVQqfq}
 }
 ```
