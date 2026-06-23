@@ -165,7 +165,6 @@ def group_family_results(
     grouped: dict[AlgoKey, list[dict]],
     family_slugs: frozenset[str],
     family_base: str,
-    dataset_name: str,
     gamma: float,
 ) -> dict[AlgoKey, list[dict]]:
     """Merge base and instruct runs from the same model family into one plot key."""
@@ -319,7 +318,6 @@ def plot_family(
         grouped,
         family_slugs=frozenset(family_slugs),
         family_base=family_base,
-        dataset_name=dataset_name,
         gamma=gamma,
     )
 
@@ -376,11 +374,11 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--n_samples", type=int, default=100)
-    parser.add_argument("--gamma", type=float, default=None, help="Gamma value to plot.")
+    parser.add_argument(
+        "--gammas", type=float, nargs="+", default=[0.5], help="Gamma values to plot."
+    )
     parser.add_argument("--dataset_name", type=str, default=None, help="Single dataset to plot.")
     args = parser.parse_args()
-
-    gammas = [0.5] if args.gamma is None else [args.gamma]
 
     if not BASE_DIR.exists():
         raise FileNotFoundError(f"Results directory not found: {BASE_DIR}")
@@ -394,7 +392,7 @@ if __name__ == "__main__":
 
     for dataset in dataset_names:
         args.dataset_name = dataset
-        for gamma in gammas:
+        for gamma in args.gammas:
             args.gamma = gamma
             try:
                 main(args)

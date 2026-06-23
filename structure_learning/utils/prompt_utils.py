@@ -7,19 +7,16 @@ description block.
 """
 
 
-def build_system_prompt(meta: dict, task_description: str) -> str:
+def build_system_prompt(meta: dict) -> str:
     """Build the system prompt for an instruction-tuned LLM.
 
     Args:
         meta: Parsed `meta_data.json` for the dataset.
-        task_description: Verb phrase describing the LLM's task, e.g.
-            ``"generating realistic data points"`` or
-            ``"discovering the structure of a Bayesian network"``.
     """
     field = meta["field"]
     return (
-        f"You are a data scientist and expert in the field of {field}, "
-        f"tasked with {task_description} for a given dataset description."
+        f"You are a data scientist and an expert in {field}, "
+        f"tasked with generating realistic data points for a given dataset description."
     )
 
 

@@ -63,11 +63,7 @@ def main(args: Namespace) -> None:
         return
 
     schema = build_schema(meta)
-    system_prompt = (
-        ""
-        if args.model_type == "base"
-        else build_system_prompt(meta, "generating realistic data points")
-    )
+    system_prompt = "" if args.model_type == "base" else build_system_prompt(meta)
 
     llm = OpenAICompatLLM(
         base_url=args.base_url,
@@ -98,11 +94,11 @@ def main(args: Namespace) -> None:
                     if args.model_type == "base":
                         return f"{dataset_description}\n{feature_description}\n[Data point] {observed_str}"
                     else:
-                        required_str = '", "'.join(variables_to_resample)
+                        required_str = '"' + '", "'.join(variables_to_resample) + '"'
                         return (
                             f"{dataset_description}\n{feature_description}\n"
                             f"We have already observed the following features: {observed_str}. "
-                            f'Generate the value(s) for "{required_str}" according to the following '
+                            f"Generate the value(s) for {required_str} according to the following "
                             f"schema: {schema_str}."
                         )
                 else:

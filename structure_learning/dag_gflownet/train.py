@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import numpy as np
 import optax
 import networkx as nx
@@ -26,9 +24,17 @@ def main(args):
     key = jax.random.PRNGKey(args.seed)
     key, subkey = jax.random.split(key)
 
-    # Create the environment
-
     scorer, data, graph = get_scorer(args, rng=rng)
+
+    # Create the output folder
+    dirname = args.graph if args.graph != "bn" else args.dataset_name
+    output_folder = OUTPUT_FOLDER / dirname / f"n{len(data)}" / args.exp_name
+    # If results.json already exists, raise an error
+    if (output_folder / "results.json").exists():
+        raise FileExistsError(f"Results already exist for {output_folder}")
+    output_folder.mkdir(exist_ok=True, parents=True)
+
+    # Create the environment
     env = GFlowNetDAGEnv(
         num_envs=args.num_envs, scorer=scorer, num_workers=args.num_workers, context=args.mp_context
     )
@@ -126,9 +132,6 @@ def main(args):
             print(f"Jensen-Shannon divergence: {jsd:.6f}")
 
         # Save model, data & results
-        dirname = args.graph if args.graph != "bn" else args.dataset_name
-        output_folder = OUTPUT_FOLDER / dirname / f"n{len(data)}" / args.exp_name
-        output_folder.mkdir(exist_ok=True, parents=True)
         with open(output_folder / "arguments.json", "w") as f:
             json.dump(vars(args), f, default=str, indent=4)
         data.to_csv(output_folder / "data.csv")
@@ -151,7 +154,6 @@ def main(args):
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
-    from pathlib import Path
     import json
 
     parser = ArgumentParser(description="DAG-GFlowNet for Strucure Learning.")

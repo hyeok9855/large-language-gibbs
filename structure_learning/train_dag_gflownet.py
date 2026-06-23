@@ -120,11 +120,9 @@ def result_path_for(experiment: Experiment, num_samples: int) -> Path:
 def iter_experiments(args: argparse.Namespace) -> list[Experiment]:
     experiments: list[Experiment] = []
     prior = args.prior
-    for seed in args.seeds:
-        for dataset_name in args.datasets:
-            if dataset_name not in DATASET_PARAMS:
-                raise ValueError(f"Unknown dataset: {dataset_name!r}")
-            if prior != "llm_data":
+    if prior != "llm_data":
+        for seed in args.seeds:
+            for dataset_name in args.datasets:
                 experiments.append(
                     Experiment(
                         dataset_name=dataset_name,
@@ -137,33 +135,36 @@ def iter_experiments(args: argparse.Namespace) -> list[Experiment]:
                         exp_name=build_uninformative_exp_name(prior, seed, args.edge_beta),
                     )
                 )
-                continue
-            for gamma in args.gammas:
-                for sampling_method in args.llm_data_sampling_methods:
-                    experiments.append(
-                        Experiment(
-                            dataset_name=dataset_name,
-                            prior=prior,
-                            llm_data_sampling_method=sampling_method,
-                            llm_data_base_prior=args.llm_data_base_prior,
-                            gamma=gamma,
-                            seed=seed,
-                            data_path=build_data_path(
+
+    else:
+        for gamma in args.gammas:
+            for seed in args.seeds:
+                for dataset_name in args.datasets:
+                    for sampling_method in args.llm_data_sampling_methods:
+                        experiments.append(
+                            Experiment(
                                 dataset_name=dataset_name,
-                                sampling_method=sampling_method,
-                                model_name=args.model_name,
-                                seed=seed,
-                                manual_reasoning=args.manual_reasoning,
-                            ),
-                            exp_name=build_exp_name(
-                                model_name=args.model_name,
-                                sampling_method=sampling_method,
+                                prior=prior,
+                                llm_data_sampling_method=sampling_method,
+                                llm_data_base_prior=args.llm_data_base_prior,
                                 gamma=gamma,
                                 seed=seed,
-                                manual_reasoning=args.manual_reasoning,
-                            ),
+                                data_path=build_data_path(
+                                    dataset_name=dataset_name,
+                                    sampling_method=sampling_method,
+                                    model_name=args.model_name,
+                                    seed=seed,
+                                    manual_reasoning=args.manual_reasoning,
+                                ),
+                                exp_name=build_exp_name(
+                                    model_name=args.model_name,
+                                    sampling_method=sampling_method,
+                                    gamma=gamma,
+                                    seed=seed,
+                                    manual_reasoning=args.manual_reasoning,
+                                ),
+                            )
                         )
-                    )
     return experiments
 
 
@@ -244,7 +245,7 @@ class GpuJobPool:
             )
         )
         print(
-            f"Launched pid={process.pid} on GPU {gpu}: "
+            f"[LAUNCHED] pid={process.pid} on GPU {gpu}: "
             f"{experiment.dataset_name} {experiment.label} "
             f"gamma={experiment.gamma} seed={experiment.seed} "
             f"\nlog file: {log_path}",
@@ -260,14 +261,14 @@ class GpuJobPool:
                 still_running.append(job)
                 continue
             self._close_log(job)
-            status = "ok" if return_code == 0 else f"failed (exit {return_code})"
             if return_code != 0:
                 failed += 1
             print(
-                f"Finished pid={job.process.pid} on GPU {job.gpu} [{status}]: "
+                f"[{'FINISHED' if return_code == 0 else 'FAILED'}] "
+                f"pid={job.process.pid} on GPU {job.gpu}: "
                 f"{job.experiment.dataset_name} {job.experiment.label} "
                 f"gamma={job.experiment.gamma} seed={job.experiment.seed} "
-                f"log={job.log_path}",
+                f"\nlog file: {job.log_path}",
                 flush=True,
             )
         self.running = still_running
@@ -454,6 +455,10 @@ if __name__ == "__main__":
         help="Print planned jobs without launching them.",
     )
     args = parser.parse_args()
+
+    for dataset_name in args.datasets:
+        if dataset_name not in DATASET_PARAMS:
+            raise ValueError(f"Unknown dataset name: {dataset_name!r}")
 
     if args.prior == "llm_data":
         if args.llm_data_sampling_methods is None:
