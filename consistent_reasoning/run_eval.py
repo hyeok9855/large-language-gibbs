@@ -833,11 +833,6 @@ if __name__ == "__main__":
         "--system_prompt", type=str, default=None, help="System prompt for instruction-tuned models"
     )
     parser.add_argument(
-        "--use_new_system_prompt",
-        action="store_true",
-        help="Use the new system prompt for the model.",
-    )
-    parser.add_argument(
         "--burn_in",
         type=int,
         default=None,
@@ -850,9 +845,10 @@ if __name__ == "__main__":
         help="(gibbs) Number of Gibbs steps between retained samples.",
     )
     parser.add_argument(
-        "--sweep",
-        action="store_true",
-        help="(gibbs) Use a systematic sweep.",
+        "--no_sweep",
+        dest="sweep",
+        action="store_false",
+        help="(gibbs) Do not use a systematic sweep.",
     )
     parser.add_argument(
         "--manual_reasoning",
@@ -927,12 +923,10 @@ if __name__ == "__main__":
         args.no_trailing_space = False
 
     if args.system_prompt is None and args.instruction_tuned:
-        args.system_prompt = "You are a helpful assistant."
-        if args.use_new_system_prompt:
-            args.system_prompt = (
-                "You are a helpful assistant. You verify whether a claim correctly "
-                "answers a question: True if the claim is correct, False if not."
-            )
+        args.system_prompt = (
+            "You are a helpful assistant. You verify whether a claim correctly "
+            "answers a question: True if the claim is correct, False if not."
+        )
 
     if args.algorithm in ("zeroshot", "npass") and args.chunk_size_cis != 1:
         print(f"[run_eval] {args.algorithm} ignores chunk_size_cis; forcing chunk_size_cis=1.")
@@ -949,15 +943,10 @@ if __name__ == "__main__":
     def derive_run_name(args: argparse.Namespace) -> str:
         model_short = args.model.split("/")[-1]
 
-        system_prompt_str = ""
-        if args.instruction_tuned:
-            if args.use_new_system_prompt:
-                system_prompt_str = "NewSysP_"
-
         if args.algorithm == "icm":
             nots = "_nots" if args.no_trailing_space else ""
             return (
-                f"{system_prompt_str}icm_{model_short}"
+                f"icm_{model_short}"
                 f"_K{args.K}_a{args.alpha}_iT{args.initial_T}_fT{args.final_T}"
                 f"_{args.scheduler}_decay{args.decay}_ns{args.num_seed}{nots}"
                 f"_cs{args.chunk_size_cis}"
@@ -974,7 +963,7 @@ if __name__ == "__main__":
             else:
                 prefix = "gamblinggibbs_"
             return (
-                f"{system_prompt_str}{prefix}{model_short}"
+                f"{prefix}{model_short}"
                 f"_T{args.temperature}_burn{args.burn_in}_thin{args.thinning}"
                 f"_K{args.num_samples}{scan}{nots}{reasoning}_cs{args.chunk_size_cis}"
                 f"_baseseed{args.partition_base_seed}"
@@ -982,7 +971,7 @@ if __name__ == "__main__":
         if args.algorithm == "zeroshot":
             nots = "_nots" if args.no_trailing_space else ""
             return (
-                f"{system_prompt_str}zeroshot_{model_short}"
+                f"zeroshot_{model_short}"
                 f"_T{args.temperature}{nots}"
                 f"_baseseed{args.partition_base_seed}"
             )
@@ -990,7 +979,7 @@ if __name__ == "__main__":
             nots = "_nots" if args.no_trailing_space else ""
             n_str = "Nall" if args.all_passes else f"N{args.n_passes}"
             return (
-                f"{system_prompt_str}npass_{model_short}"
+                f"npass_{model_short}"
                 f"_T{args.temperature}_{n_str}{nots}"
                 f"_baseseed{args.partition_base_seed}"
             )
