@@ -50,6 +50,24 @@ class BDeScore(BaseScore):
             for column in self.data.columns
         }
 
+        # Build robust code mapping that guarantees alignment with sorted categories
+        data_codes_list = []
+        self.cardinalities = []
+        for column in self.data.columns:
+            cats = self.data[column].cat.categories.tolist()
+            sorted_cats = sorted(cats)
+            self.cardinalities.append(len(sorted_cats))
+
+            # map from original pandas category code -> sorted category index
+            mapping = np.array([sorted_cats.index(cat) for cat in cats], dtype=np.int64)
+
+            orig_codes = self.data[column].cat.codes.values
+            mapped_codes = np.where(orig_codes >= 0, mapping[orig_codes], -1)
+            data_codes_list.append(mapped_codes)
+
+        self.data_codes = np.array(data_codes_list, dtype=np.int64).T
+        self.cardinalities = np.array(self.cardinalities, dtype=np.int64)
+
     def _local_score(self, target: int, indices: tuple[int, ...]) -> LocalScore:
         counts = self._state_counts(target, indices)
         num_parents_states = counts.shape[1]
@@ -79,29 +97,32 @@ class BDeScore(BaseScore):
         )
 
     def _state_counts(self, target: int, indices: tuple[int, ...]) -> np.ndarray:
-        # Source: pgmpy.estimators.BaseEstimator.state_counts()
-        # TODO: use numpy instead of pandas
+        # Filter interventional data for target node
+        mask = self._interventions != target
 
-        parents = [self.column_names[index] for index in indices]
-        variable = self.column_names[target]
+        cols = [target] + list(indices)
+        filtered_codes = self.data_codes[mask][:, cols]
 
-        assert self.data is not None
-        data = self.data[self._interventions != target]
-        data = data[[variable] + parents].dropna()
+        # Drop rows with NaNs (codes == -1) to match original dropna() behavior
+        valid_mask = np.all(filtered_codes >= 0, axis=1)
+        filtered_codes = filtered_codes[valid_mask]
 
-        state_count_data = data.groupby([variable] + parents).size().unstack(parents)
+        card_t = self.cardinalities[target]
+        target_codes = filtered_codes[:, 0]
+        if len(indices) == 0:
+            counts = np.bincount(target_codes, minlength=card_t)
+            return counts[:, None]
+        parent_codes = filtered_codes[:, 1:]
+        parent_cards = self.cardinalities[list(indices)]
 
-        if len(parents) == 0:
-            return state_count_data.fillna(0).values[:, None]
+        # Strides for row-major product indexing
+        strides = np.r_[parent_cards[1:], 1]
+        strides = np.cumprod(strides[::-1])[::-1]
 
-        if not isinstance(state_count_data.columns, pd.MultiIndex):
-            state_count_data.columns = pd.MultiIndex.from_arrays([state_count_data.columns])
+        parent_index = np.dot(parent_codes, strides)
+        num_parent_states = np.prod(parent_cards)
 
-        parent_states = [self.state_names[parent] for parent in parents]
-        columns_index = pd.MultiIndex.from_product(parent_states, names=parents)
-
-        return (
-            state_count_data.reindex(index=self.state_names[variable], columns=columns_index)
-            .fillna(0)
-            .values
-        )
+        # Map 2D coordinate (target, parent_index) to 1D index
+        flat_index = target_codes * num_parent_states + parent_index
+        flat_counts = np.bincount(flat_index, minlength=card_t * num_parent_states)
+        return flat_counts.reshape(card_t, num_parent_states)

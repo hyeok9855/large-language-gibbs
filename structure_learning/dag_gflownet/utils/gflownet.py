@@ -155,8 +155,11 @@ def posterior_estimate(gflownet, params, env, key, num_samples=1000, verbose=Tru
     ) as pbar:
         while len(samples) < num_samples:
             order = observations["order"]
-            actions, key, _ = gflownet.act(params, key, observations, 1.0)
-            observations, _, dones, _ = env.step(np.asarray(actions))
+            actions, key, _ = gflownet.act(
+                params, key, observations["adjacency"], observations["mask"], 1.0
+            )
+            actions_np = np.asarray(actions)
+            observations, _, dones, _ = env.step(actions_np)
 
             samples.extend([order[i] for i, done in enumerate(dones) if done])
             pbar.update(min(num_samples - pbar.n, np.sum(dones).item()))

@@ -3,7 +3,7 @@ import optax
 import networkx as nx
 import pickle
 import jax
-from tqdm import trange
+from tqdm import tqdm
 from numpy.random import default_rng
 
 from structure_learning.dag_gflownet.env import GFlowNetDAGEnv
@@ -62,18 +62,24 @@ def main(args):
         # Training loop
         indices = None
         observations = env.reset()
-        with trange(
-            args.prefill + args.num_iterations, desc="Training", dynamic_ncols=True
-        ) as pbar:
-            for iteration in pbar:
+        update_every = max(1, args.num_iterations // 1000)
+        total_iterations = args.prefill + args.num_iterations
+        with tqdm(total=total_iterations, desc="Training", dynamic_ncols=True) as pbar:
+            for iteration in range(total_iterations):
                 # Sample actions, execute them, and save transitions in the replay buffer
                 epsilon = exploration_schedule(iteration)
-                actions, key, logs = gflownet.act(params.online, key, observations, epsilon)
-                next_observations, delta_scores, dones, _ = env.step(np.asarray(actions))
+                adjacency = observations["adjacency"]
+                mask = observations["mask"]
+                actions, key, logs = gflownet.act(params.online, key, adjacency, mask, epsilon)
+
+                actions_np = np.asarray(actions)
+                is_exploration_np = np.asarray(logs["is_exploration"])
+
+                next_observations, delta_scores, dones, _ = env.step(actions_np)
                 indices = replay.add(
                     observations,
-                    actions,
-                    logs["is_exploration"],
+                    actions_np,
+                    is_exploration_np,
                     next_observations,
                     delta_scores,
                     dones,
@@ -86,7 +92,17 @@ def main(args):
                     samples = replay.sample(batch_size=args.batch_size, rng=rng)
                     params, state, logs = gflownet.step(params, state, samples)
 
-                    pbar.set_postfix(loss=f"{logs['loss']:.2f}", epsilon=f"{epsilon:.2f}")
+                if (
+                    iteration == 0
+                    or (iteration + 1) % update_every == 0
+                    or (iteration + 1) == total_iterations
+                ):
+                    pbar.update((iteration + 1) - pbar.n)
+                    if iteration >= args.prefill:
+                        pbar.set_postfix(
+                            loss=f"{logs['loss']:.2f}", epsilon=f"{epsilon:.2f}", refresh=False
+                        )
+                    pbar.refresh()
 
         # Evaluate the posterior estimate
         posterior, _ = posterior_estimate(
@@ -256,7 +272,7 @@ if __name__ == "__main__":
     )
     misc.add_argument("--seed", type=int, default=0, help="Random seed (default: %(default)s)")
     misc.add_argument(
-        "--num_workers", type=int, default=4, help="Number of workers (default: %(default)s)"
+        "--num_workers", type=int, default=0, help="Number of workers (default: %(default)s)"
     )
     misc.add_argument(
         "--mp_context",

@@ -62,9 +62,9 @@ class DAGGFlowNet:
         )
 
     @partial(jit, static_argnums=(0,))
-    def act(self, params, key, observations, epsilon):
-        masks = observations["mask"].astype(jnp.float32)
-        adjacencies = observations["adjacency"].astype(jnp.float32)
+    def act(self, params, key, adjacency, mask, epsilon):
+        masks = mask.astype(jnp.float32)
+        adjacencies = adjacency.astype(jnp.float32)
         batch_size = adjacencies.shape[0]
         key, subkey1, subkey2 = random.split(key, 3)
 

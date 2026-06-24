@@ -12,6 +12,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+consistent-reasoning = [
+    "requests>=2.32.0",
+    "tiktoken>=0.8.0",
+]
+
 structure-learning = [
     "pgmpy",
     "jax>=0.9.1",
@@ -22,11 +27,6 @@ structure-learning = [
     "dm-haiku",
     "scikit-learn>=1.7.2",
     "jraph>=0.0.6.dev0",
-]
-
-consistent-reasoning = [
-    "requests>=2.32.0",
-    "tiktoken>=0.8.0",
 ]
 
 structure-learning-cuda12 = [
