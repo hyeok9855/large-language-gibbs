@@ -18,7 +18,12 @@ from typing import Any, Callable
 
 import numpy as np
 
-from consistent_reasoning.models import ModelAPI, OpenAICompatLLM, ReasoningOpenAICompatLLM, setup_environment
+from consistent_reasoning.models import (
+    ModelAPI,
+    OpenAICompatLLM,
+    ReasoningOpenAICompatLLM,
+    setup_environment,
+)
 from consistent_reasoning.dataloaders import (
     load_eval_set,
     build_partitions,
@@ -26,7 +31,7 @@ from consistent_reasoning.dataloaders import (
     select_items_for_chunk,
     load_processed_train,
     initialize,
-    get_root_directory
+    CONSISTENT_REASONING_DIR,
 )
 from consistent_reasoning.algorithms.icm import run_icm_search
 from consistent_reasoning.algorithms.gibbs import run_gibbs_search
@@ -912,7 +917,7 @@ if __name__ == "__main__":
         raise ValueError(f"--num_workers must be >= 1, got {args.num_workers}.")
 
     if args.eval_set is None:
-        args.eval_set = get_root_directory() / "eval_sets" / f"{args.testbed}.json"
+        args.eval_set = CONSISTENT_REASONING_DIR / "eval_sets" / f"{args.testbed}.json"
 
     args.instruction_tuned = False
     if args.model in INSTRUCT_MODELS:
@@ -930,9 +935,7 @@ if __name__ == "__main__":
             )
 
     if args.algorithm in ("zeroshot", "npass") and args.chunk_size_cis != 1:
-        print(
-            f"[run_eval] {args.algorithm} ignores chunk_size_cis; forcing chunk_size_cis=1."
-        )
+        print(f"[run_eval] {args.algorithm} ignores chunk_size_cis; forcing chunk_size_cis=1.")
         args.chunk_size_cis = 1
 
     if args.algorithm in ("gibbs", "barker_gibbs", "gambling_gibbs"):
@@ -998,7 +1001,11 @@ if __name__ == "__main__":
 
     if args.output_dir is None:
         args.output_dir = (
-            get_root_directory() / "eval_results" / args.algorithm / args.testbed / args.run_name
+            CONSISTENT_REASONING_DIR
+            / "eval_results"
+            / args.algorithm
+            / args.testbed
+            / args.run_name
         )
 
     os.environ["LLAMA_API_BASE"] = f"http://localhost:{args.port}/v1"

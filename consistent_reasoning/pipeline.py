@@ -4,9 +4,10 @@ from collections import deque
 
 from consistent_reasoning.models import ModelAPI
 from consistent_reasoning.query_runner import QueryConfigBuilder, query_model
-from consistent_reasoning.dataloaders import read_from_cache, save_to_cache, get_root_directory
+from consistent_reasoning.dataloaders import read_from_cache, save_to_cache
 
 logger = logging.getLogger(__name__)
+
 
 class Language:
     PYTHON = "python"

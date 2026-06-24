@@ -4,19 +4,16 @@ import random
 from pathlib import Path
 from typing import Any
 
-def get_root_directory() -> Path:
-    return Path(__file__).resolve().parent.parent
 
-def get_default_results_directory() -> Path:
-    return Path("/tmp/cache/results/")
+CONSISTENT_REASONING_DIR = Path(__file__).parent
+CACHE_DIR = CONSISTENT_REASONING_DIR / "cache"
 
 
 def load_processed_train(args):
     instruction_tuned = getattr(args, "instruction_tuned", False)
-    root_dir = get_root_directory()
 
     if args.testbed == "alpaca":
-        with open(root_dir / "data/train_alpaca.json") as f:
+        with open(CONSISTENT_REASONING_DIR / "data/alpaca.json") as f:
             train = json.load(f)
         if instruction_tuned:
             template = """Human: {question}
@@ -41,7 +38,7 @@ I think this claim is """
         args.GROUP_SIZE = 2
 
     elif args.testbed == "gsm8k":
-        with open(root_dir / "data/train_gsm8k.json") as f:
+        with open(CONSISTENT_REASONING_DIR / "data/gsm8k.json") as f:
             train = json.load(f)
 
         if instruction_tuned:
@@ -60,7 +57,7 @@ I think this claim is """
         args.GROUP_SIZE = 4
 
     elif args.testbed == "truthfulQA":
-        with open(root_dir / "data/train_truthfulqa.json") as f:
+        with open(CONSISTENT_REASONING_DIR / "data/truthfulqa.json") as f:
             train = json.load(f)
 
         if instruction_tuned:
@@ -77,29 +74,6 @@ I think this claim is """
             i["prompt"] = template.format(question=i["question"], answer=i["choice"])
         args.GROUP_SIZE = 4
 
-    elif args.testbed == "truthfulQA-preference":
-        with open(root_dir / "data/train_truthfulqa_preference.json") as f:
-            train = json.load(f)
-
-        if instruction_tuned:
-            template = """Question: {question}
-Answer 1: {choice}
-Answer 2: {choice_2}
-Claim: Answer 1 is more truthful than Answer 2.
-Is this claim True or False?"""
-        else:
-            template = """Question: {question}
-Answer 1: {choice}
-Answer 2: {choice_2}
-Claim: Answer 1 is more truthful than Answer 2.
-I think this claim is """
-
-        for i in train:
-            i["source"] = "truthfulQA-preference"
-            i["prompt"] = template.format(
-                question=i["question"], choice=i["choice"], choice_2=i["choice_2"]
-            )
-        args.GROUP_SIZE = 2
     else:
         raise ValueError(f"Testbed {args.testbed} not supported")
 
@@ -224,6 +198,7 @@ def select_items_for_chunk(
     expected_group_size: int,
 ) -> list[dict[str, Any]]:
     from copy import deepcopy
+
     items: list[dict[str, Any]] = []
     for cid in chunk_cids:
         if cid not in cid_index:
@@ -246,7 +221,7 @@ def load_assignments(path, num_problems=None, problem_ids=None):
 
 
 def save_to_cache(data, name, delete_existing=False, incoming_problem_ids=None):
-    dir_path = get_default_results_directory() / name
+    dir_path = CACHE_DIR / name
 
     if delete_existing and os.path.exists(dir_path):
         for file in os.listdir(dir_path):
@@ -272,7 +247,7 @@ def save_to_cache(data, name, delete_existing=False, incoming_problem_ids=None):
 
 
 def read_from_cache(name):
-    dir_path = get_default_results_directory() / name
+    dir_path = CACHE_DIR / name
     data = {}
     incoming_problem_ids = []
 

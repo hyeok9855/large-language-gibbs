@@ -80,7 +80,7 @@ You should have access to an OpenAI-compatible API for pretrained base models th
 
 We recommend deploying models using [vLLM](https://github.com/vllm-project/vllm). For example, to host `meta-llama/Llama-3.1-8B` locally:
 ```bash
-vllm serve meta-llama/Llama-3.1-8B --port 8000
+vllm serve meta-llama/Llama-3.1-8B --port 8000 --max-num-seqs 32 --enable-prefix-caching
 ```
 
 - **Port & URL Configuration**:
@@ -95,28 +95,23 @@ vllm serve meta-llama/Llama-3.1-8B --port 8000
 
 ### Data Preparation
 
-1. Download the pre-processed datasets from [Google Drive](https://drive.google.com/file/d/1AJdFJO9IHfOnWHyIlGvInyndLu6EvcfV/view?usp=sharing).
-2. Create a `data/` folder in the root of the repository and extract the files there. You should have:
-   - `data/train_truthfulqa.json`
-   - `data/train_gsm8k.json`
-   - `data/train_alpaca.json`
 
-The fixed evaluation set json descriptors (e.g. `truthfulQA.json`, `gsm8k.json`) are already pre-configured under the `eval_sets/` directory.
+The datasets and fixed evaluation set json descriptors are already pre-configured under the `consistent_reasoning/data/` and `consistent_reasoning/eval_sets/` directories.
 
 ### Usage
 
-Run evaluations across multiple algorithms and testbeds using the unified driver script `consistent_reasoning.run_eval`.
+Run evaluations across multiple algorithms and testbeds using the unified driver script `consistent_reasoning/run_eval.py`.
 
 For example, to run Gibbs sampling on TruthfulQA with 5 partitions:
 ```bash
-uv run python -m consistent_reasoning.run_eval \
+uv run python consistent_reasoning/run_eval.py \
   --testbed truthfulQA \
   --algorithm gibbs \
   --model meta-llama/Llama-3.1-8B \
   --port 8000 \
   --temperature 1.0 \
   --n_partitions 5 \
-  --num_workers 4
+  --num_workers 32
 ```
 
 #### Key Arguments

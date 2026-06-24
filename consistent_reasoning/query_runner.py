@@ -1,9 +1,4 @@
-import os
 import tiktoken
-from consistent_reasoning.dataloaders import get_root_directory, get_default_results_directory
-
-ROOT_DIR = get_root_directory()
-DEFAULT_RESULTS_DIR = get_default_results_directory()
 
 
 class QueryConfig:
@@ -85,7 +80,7 @@ class QueryConfigBuilder:
     def with_experiment_name(self, experiment_name):
         self.experiment_name = experiment_name
         return self
- 
+
     def with_bon(self, bon):
         self.bon = bon
         return self
@@ -176,17 +171,6 @@ def _get_prompts(problems, prompt_fn):
     return prompts
 
 
-def get_save_dir(query_config):
-    results_dir = (
-        ROOT_DIR / query_config.results_dir
-        if query_config.results_dir is not None
-        else DEFAULT_RESULTS_DIR
-    )
-    save_dir = results_dir / query_config.experiment_name / query_config.model_to_test
-    os.makedirs(save_dir, exist_ok=True)
-    return save_dir
-
-
 def move_data_into_metadata(data):
     for data_id, value in data.items():
         filtered_val = {
@@ -220,9 +204,9 @@ def tokenize_logit_bias(logit_bias, model):
 
 async def query_model(model_api, file_sem, query_config):
     import asyncio
+
     data = query_config.get_data()
     prompts = _get_prompts(data, query_config.prompt_fn)
-    save_dir = get_save_dir(query_config)
 
     move_data_into_metadata(data)
 
