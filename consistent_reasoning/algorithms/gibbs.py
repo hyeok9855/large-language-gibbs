@@ -15,23 +15,18 @@ from priorbot.priors import GibbsLLMPrior, Prior
 from consistent_reasoning.models import OpenAICompatLLM
 from consistent_reasoning.prompt_utils import get_judge_prompt_fewshot
 
-_LABEL_CHOICES: list[str] = ["True", "False"]
 
-
-class ICMConditionalPrior(Prior):
+class CustomPrior(Prior):
     def __init__(
         self,
         llm: OpenAICompatLLM,
         demonstrations: dict[int, dict[str, Any]],
-        no_trailing_space: bool = False,
     ):
         super().__init__()
         self.llm = llm
-        assert not (self.llm.instruction_tuned and no_trailing_space)
         self.demonstrations = demonstrations
-        self.no_trailing_space = bool(no_trailing_space)
-        self._label_choices: list[str] = (
-            [" True", " False"] if self.no_trailing_space else list(_LABEL_CHOICES)
+        self._label_choices = (
+            ["True", "False"] if self.llm.instruction_tuned else [" True", " False"]
         )
 
     def sample(
@@ -60,7 +55,7 @@ class ICMConditionalPrior(Prior):
     ) -> list[dict[str, Any]]:
         if len(schema["properties"]) != 1:
             raise ValueError(
-                "ICMConditionalPrior.sample_conditional expects a single-key schema; "
+                "CustomPrior.sample_conditional expects a single-key schema; "
                 f"got {list(schema['properties'])}."
             )
 
@@ -73,15 +68,13 @@ class ICMConditionalPrior(Prior):
             target_consistency_id=example["consistency_id"],
             target_uid=example["uid"],
         )
-        if getattr(self.llm, "instruction_tuned", False):
+        if self.llm.instruction_tuned:
             prompt = example["prompt"]
             chosen = self.llm.generate(
                 prompt, schema=self._label_choices, verbose=verbose, history=demos
             )
         else:
             prompt = cast(str, get_judge_prompt_fewshot(example, demos, pipeline=False))
-            if self.no_trailing_space and prompt.endswith(" "):
-                prompt = prompt[:-1]
             chosen = self.llm.generate(prompt, schema=self._label_choices, verbose=verbose)
 
         if not isinstance(chosen, str):
@@ -249,36 +242,30 @@ def run_gibbs_search(
     llm: OpenAICompatLLM,
     log_path: Path | str | None,
     *,
-    verbose_steps: bool = False,
+    verbose: bool = False,
 ) -> tuple[dict[int, dict[str, Any]], dict[str, Any]]:
     schema = build_schema(whole_ids)
 
     sweep = bool(getattr(args, "sweep", False))
-    no_trailing_space = bool(getattr(args, "no_trailing_space", False))
     parallel = getattr(args, "num_workers", 1) > 1
     if not parallel:
         print(
             f"[gibbs]: full-batch Gibbs over N={len(whole_ids)} "
             f"variables (T={llm.temperature}, burn_in={args.burn_in}, "
-            f"thinning={args.thinning}, num_samples={args.num_samples}, "
-            f"sweep={sweep}, no_trailing_space={no_trailing_space})"
+            f"thinning={args.thinning}, num_samples={args.num_samples}, sweep={sweep})"
         )
 
     if log_path is not None:
         log_path = Path(log_path)
         log_path.unlink(missing_ok=True)
 
-    base_prior = ICMConditionalPrior(
-        llm=llm,
-        demonstrations=demonstrations,
-        no_trailing_space=no_trailing_space,
-    )
+    base_prior = CustomPrior(llm=llm, demonstrations=demonstrations)
 
     state = {"step": 0}
 
     def on_step(_local_step: int, current: dict[str, Any], resampled_key: str) -> None:
         state["step"] += 1
-        if not verbose_steps:
+        if not verbose:
             return
         metrics = evaluate_assignment(demonstrations, current)
         if log_path is not None:
@@ -291,7 +278,7 @@ def run_gibbs_search(
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_record, default=str) + "\n")
 
-        if verbose_steps:
+        if verbose:
             print(
                 f"[step {state['step']:>5}] resampled uid={int(resampled_key):>4} "
                 f"-> {bool(current[resampled_key])} | "

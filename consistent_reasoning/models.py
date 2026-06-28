@@ -4,10 +4,11 @@ import threading
 import time
 import asyncio
 import logging
-from typing import Any, Callable, Union, List, Dict
+from typing import Any, Union, List, Dict
 
 logger = logging.getLogger(__name__)
 _thread_local = threading.local()
+
 
 def setup_environment(logger_level="info"):
     level = getattr(logging, logger_level.upper(), logging.INFO)
@@ -59,8 +60,7 @@ class OpenAICompatLLM:
     ) -> str:
         if not isinstance(schema, list) or not all(isinstance(s, str) for s in schema):
             raise NotImplementedError(
-                "OpenAICompatLLM only supports list[str] choice schemas; "
-                f"got schema={schema!r}."
+                f"OpenAICompatLLM only supports list[str] choice schemas; got schema={schema!r}."
             )
 
         if self.instruction_tuned:
@@ -147,7 +147,7 @@ class ReasoningOpenAICompatLLM(OpenAICompatLLM):
     ) -> str | dict[str, Any]:
         if isinstance(schema, list):
             return super().generate(prompt, schema, verbose, max_trials, history)
-        
+
         if not isinstance(schema, dict):
             raise NotImplementedError("Only list[str] or dict schema supported.")
 
@@ -199,11 +199,12 @@ class ReasoningOpenAICompatLLM(OpenAICompatLLM):
                     content = data["choices"][0]["message"]["content"]
                 else:
                     content = data["choices"][0]["text"]
-                
+
                 if verbose:
                     print(f"[ReasoningOpenAICompatLLM] -> {content!r}")
-                
+
                 import json
+
                 return json.loads(content)
             except Exception as e:
                 last_err = e
@@ -246,21 +247,18 @@ class ModelAPI:
         use_cache: bool = True,
         file_sem=None,
         metadata=None,
-        **kwargs
+        **kwargs,
     ) -> List[Dict[str, Any]]:
         model = model_ids[0] if isinstance(model_ids, list) else model_ids
-        
+
         base_url = os.environ.get("LLAMA_API_BASE", "http://localhost:8000/v1").rstrip("/")
         api_key = os.environ.get("API_KEY", "EMPTY")
-        
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
+
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
         temperature = kwargs.get("temperature", 0.0)
         logprobs_val = kwargs.get("logprobs", None)
-        
+
         if isinstance(prompt, list):
             url = f"{base_url}/chat/completions"
             body = {
@@ -268,7 +266,7 @@ class ModelAPI:
                 "messages": prompt,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
-                "n": n
+                "n": n,
             }
             if logprobs_val is not None:
                 body["logprobs"] = True
@@ -280,36 +278,41 @@ class ModelAPI:
                 "prompt": prompt,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
-                "n": n
+                "n": n,
             }
             if logprobs_val is not None:
                 body["logprobs"] = logprobs_val
-                
+
+        def _post():
+            return self._session().post(url, headers=headers, json=body, timeout=120)
+
         last_err = None
         response_data = None
         t_start = time.time()
         for attempt in range(max_attempts_per_api_call):
             try:
-                def _post():
-                    return self._session().post(url, headers=headers, json=body, timeout=120)
                 resp = await asyncio.to_thread(_post)
                 resp.raise_for_status()
                 response_data = resp.json()
                 break
             except Exception as e:
                 last_err = e
-                await asyncio.sleep(1.0 * (1.5 ** attempt))
-                
+                await asyncio.sleep(1.0 * (1.5**attempt))
+
         if response_data is None:
-            raise RuntimeError(f"API call failed after {max_attempts_per_api_call} attempts. Last error: {last_err}")
-            
+            raise RuntimeError(
+                f"API call failed after {max_attempts_per_api_call} attempts. Last error: {last_err}"
+            )
+
         t_duration = time.time() - t_start
-        
+
         results = []
         for choice in response_data["choices"]:
-            completion_text = choice["message"]["content"] if "message" in choice else choice["text"]
+            completion_text = (
+                choice["message"]["content"] if "message" in choice else choice["text"]
+            )
             stop_reason = choice.get("finish_reason", "stop")
-            
+
             logprobs_list = None
             if "logprobs" in choice and choice["logprobs"] is not None:
                 raw_logprobs = choice["logprobs"]
@@ -323,7 +326,7 @@ class ModelAPI:
                         logprobs_list.append(top_logprob_dict)
                 elif "top_logprobs" in raw_logprobs:
                     logprobs_list = raw_logprobs["top_logprobs"]
-            
+
             resp_dict = {
                 "prompt": prompt,
                 "metadata": metadata,
@@ -334,11 +337,11 @@ class ModelAPI:
                     "duration": t_duration,
                     "api_duration": t_duration,
                     "cost": 0.0,
-                    "logprobs": logprobs_list
-                }
+                    "logprobs": logprobs_list,
+                },
             }
             if parse_fn is not None:
                 resp_dict = parse_fn(resp_dict)
             results.append(resp_dict)
-            
+
         return results[:n]

@@ -12,9 +12,8 @@ import numpy as np
 from tqdm import tqdm
 
 from priorbot.priors import GibbsLLMPrior, Prior
-from consistent_reasoning.models import OpenAICompatLLM, ReasoningOpenAICompatLLM
+from consistent_reasoning.models import OpenAICompatLLM
 from consistent_reasoning.algorithms.gibbs import (
-    _LABEL_CHOICES,
     _hierarchical_demo_order,
     build_schema,
     apply_assignment_to_demos,
@@ -22,22 +21,21 @@ from consistent_reasoning.algorithms.gibbs import (
 )
 
 
-class ICMGamblingConditionalPrior(Prior):
+class CustomGamblingPrior(Prior):
     def __init__(
         self,
         llm: OpenAICompatLLM,
         demonstrations: dict[int, dict[str, Any]],
-        no_trailing_space: bool = False,
         manual_reasoning: bool = False,
     ):
         super().__init__()
         self.llm = llm
-        assert not (self.llm.instruction_tuned and no_trailing_space)
         self.demonstrations = demonstrations
         self.manual_reasoning = manual_reasoning
-        self.no_trailing_space = bool(no_trailing_space)
         if not self.llm.instruction_tuned:
-            raise NotImplementedError("Gambling Gibbs variant is only supported for instruction-tuned models.")
+            raise NotImplementedError(
+                "Gambling Gibbs variant is only supported for instruction-tuned models."
+            )
         self._label_choices = ["Place Bet", "Do Not Place Bet"]
 
     def sample(
@@ -66,7 +64,7 @@ class ICMGamblingConditionalPrior(Prior):
     ) -> list[dict[str, Any]]:
         if len(schema["properties"]) != 1:
             raise ValueError(
-                "ICMGamblingConditionalPrior.sample_conditional expects a single-key schema; "
+                "CustomGamblingPrior.sample_conditional expects a single-key schema; "
                 f"got {list(schema['properties'])}."
             )
 
@@ -98,13 +96,8 @@ class ICMGamblingConditionalPrior(Prior):
 
         binary_schema = {
             "type": "object",
-            "properties": {
-                "bet": {
-                    "type": "string",
-                    "enum": ["Place Bet", "Do Not Place Bet"]
-                }
-            },
-            "required": ["bet"]
+            "properties": {"bet": {"type": "string", "enum": self._label_choices}},
+            "required": ["bet"],
         }
 
         if getattr(self, "manual_reasoning", False):
@@ -117,7 +110,9 @@ class ICMGamblingConditionalPrior(Prior):
                 **binary_schema["properties"],
             }
             binary_schema["required"] = ["reasoning"] + binary_schema["required"]
-            prompt += f"Respond with JSON that conforms to this schema: {json.dumps(binary_schema)}."
+            prompt += (
+                f"Respond with JSON that conforms to this schema: {json.dumps(binary_schema)}."
+            )
             generate_max_trials = 20
         else:
             prompt += f"Respond with 'Place Bet' or 'Do Not Place Bet'."
@@ -125,10 +120,12 @@ class ICMGamblingConditionalPrior(Prior):
 
         chosen = self.llm.generate(
             prompt,
-            schema=binary_schema if getattr(self, "manual_reasoning", False) else self._label_choices,
+            schema=(
+                binary_schema if getattr(self, "manual_reasoning", False) else self._label_choices
+            ),
             verbose=verbose,
             history=demos,
-            max_trials=generate_max_trials
+            max_trials=generate_max_trials,
         )
 
         if getattr(self, "manual_reasoning", False):
@@ -244,29 +241,26 @@ def run_gambling_gibbs_search(
     llm: OpenAICompatLLM,
     log_path: Path | str | None,
     *,
-    verbose_steps: bool = False,
+    verbose: bool = False,
 ) -> tuple[dict[int, dict[str, Any]], dict[str, Any]]:
     schema = build_schema(whole_ids)
 
     sweep = bool(getattr(args, "sweep", False))
-    no_trailing_space = bool(getattr(args, "no_trailing_space", False))
     parallel = getattr(args, "num_workers", 1) > 1
     if not parallel:
         print(
             f"[gambling_gibbs]: full-batch Gambling Gibbs over N={len(whole_ids)} "
             f"variables (T={llm.temperature}, burn_in={args.burn_in}, "
-            f"thinning={args.thinning}, num_samples={args.num_samples}, "
-            f"sweep={sweep}, no_trailing_space={no_trailing_space})"
+            f"thinning={args.thinning}, num_samples={args.num_samples}, sweep={sweep})"
         )
 
     if log_path is not None:
         log_path = Path(log_path)
         log_path.unlink(missing_ok=True)
 
-    base_prior = ICMGamblingConditionalPrior(
+    base_prior = CustomGamblingPrior(
         llm=llm,
         demonstrations=demonstrations,
-        no_trailing_space=no_trailing_space,
         manual_reasoning=getattr(args, "manual_reasoning", False),
     )
 
@@ -274,7 +268,7 @@ def run_gambling_gibbs_search(
 
     def on_step(_local_step: int, current: dict[str, Any], resampled_key: str) -> None:
         state["step"] += 1
-        if not verbose_steps:
+        if not verbose:
             return
         metrics = evaluate_assignment(demonstrations, current)
         if log_path is not None:
@@ -287,7 +281,7 @@ def run_gambling_gibbs_search(
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_record, default=str) + "\n")
 
-        if verbose_steps:
+        if verbose:
             print(
                 f"[step {state['step']:>5}] resampled uid={int(resampled_key):>4} "
                 f"-> {bool(current[resampled_key])} | "

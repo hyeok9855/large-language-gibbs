@@ -1,7 +1,6 @@
 import asyncio
 import json
 import math
-import os
 import random
 import logging
 from collections import Counter
@@ -9,12 +8,10 @@ from copy import deepcopy
 from tqdm import tqdm
 import numpy as np
 
-from consistent_reasoning.models import ModelAPI
 from consistent_reasoning.prompt_utils import (
-    Prompt,
     get_judge_prompt_fewshot,
     extract_claim_logprobs,
-    _make_judge_prompt_creator
+    _make_judge_prompt_creator,
 )
 from consistent_reasoning.pipeline import Pipeline, PipelineConfig
 from consistent_reasoning.dataloaders import load_assignments
@@ -22,7 +19,7 @@ from consistent_reasoning.dataloaders import load_assignments
 logger = logging.getLogger(__name__)
 
 
-def calculate_accuracy(train_data, inconsistent_pairs):
+def calculate_accuracy(train_data):
     train_probs = []
     for i in train_data.values():
         if i["label"] is None:
@@ -46,7 +43,6 @@ def calculate_accuracy(train_data, inconsistent_pairs):
         "train_predict_distribution": Counter([i["label"] for i in train_data.values()]),
         "train_prob": train_prob,
         "train_size": len(train_data),
-        "inconsistent_num": len(inconsistent_pairs),
     }
 
 
@@ -59,20 +55,13 @@ def update_assign(data):
     return data
 
 
-def pick_two_inconsistent_claims(data):
-    inconsistent_pairs = {}
-    return inconsistent_pairs
-
-
 def get_pipeline(
     model,
     name=None,
-    use_cache=True,
     num_problems=None,
     decision_id=None,
     iter=None,
     assignment=None,
-    no_trailing_space=False,
     instruction_tuned=False,
     system_prompt="",
 ):
@@ -87,7 +76,6 @@ def get_pipeline(
         anthropic_num_threads=40,
         openai_fraction_rate_limit=0.99,
         num_problems=num_problems,
-        use_cache=use_cache,
     )
     pipeline = Pipeline(pipeline_config)
 
@@ -150,24 +138,17 @@ def get_pipeline(
     get_train_preds = pipeline.add_query_step(
         "get_train_preds",
         model,
-        _make_judge_prompt_creator(no_trailing_space, instruction_tuned, system_prompt),
+        _make_judge_prompt_creator(instruction_tuned, system_prompt),
         extract_claim_logprobs,
         dependencies=[merged_train_data],
         logprobs=20,
         max_tokens=1,
-        use_cache=use_cache,
-    )
-
-    pick_claims = pipeline.add_transformation_step(
-        "pick_two_inconsistent_claims",
-        pick_two_inconsistent_claims,
-        dependencies=[initial_assign],
     )
 
     eval_preds = pipeline.add_eval_step(
         "evaluate",
         calculate_accuracy,
-        dependencies=[get_train_preds, pick_claims],
+        dependencies=[get_train_preds],
     )
     return pipeline
 
@@ -177,14 +158,12 @@ async def predict_assignment(
     model,
     example,
     demonstrations,
-    no_trailing_space=False,
     instruction_tuned=False,
     system_prompt="",
 ):
     demos = [v for k, v in demonstrations.items() if k != example["uid"] and v["label"] is not None]
 
     if instruction_tuned:
-        assert not no_trailing_space
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -195,9 +174,6 @@ async def predict_assignment(
         prompt = messages
     else:
         prompt = get_judge_prompt_fewshot(example, demos, pipeline=False)
-        if no_trailing_space:
-            from consistent_reasoning.prompt_utils import _strip_one_trailing_space
-            prompt = _strip_one_trailing_space(prompt)
 
     anthropic_requests = [
         model_api(
@@ -224,7 +200,7 @@ def get_temperature(iteration, initial_temp, final_temp, decay_rate, schedule="e
 
 
 def get_energy(metric, alpha):
-    return alpha * metric["train_prob"] - metric["inconsistent_num"]
+    return alpha * metric["train_prob"]
 
 
 def run_icm_search(
@@ -238,7 +214,6 @@ def run_icm_search(
 ):
     cur_metric = {
         "train_prob": -1e6,
-        "inconsistent_num": 100000,
         "train_accuracy": 1.0,
         "train_predict_distribution": {"0": 0, "1": 0},
         "train_label_distribution": {"0": 0, "1": 0},
@@ -257,7 +232,6 @@ def run_icm_search(
         ),
     )
 
-    no_trailing_space = bool(getattr(args, "no_trailing_space", False))
     instruction_tuned = bool(getattr(args, "instruction_tuned", False))
     system_prompt = getattr(args, "system_prompt", "")
 
@@ -274,7 +248,6 @@ def run_icm_search(
                 num_problems=None,
                 iter=iter,
                 assignment=cur_pool,
-                no_trailing_space=no_trailing_space,
                 instruction_tuned=instruction_tuned,
                 system_prompt=system_prompt,
             )
@@ -307,7 +280,6 @@ def run_icm_search(
                 args.model,
                 demonstrations[example_id],
                 cur_pool,
-                no_trailing_space=no_trailing_space,
                 instruction_tuned=instruction_tuned,
                 system_prompt=system_prompt,
             )
@@ -324,7 +296,6 @@ def run_icm_search(
                 num_problems=None,
                 iter=iter,
                 assignment=tmp_pool,
-                no_trailing_space=no_trailing_space,
                 instruction_tuned=instruction_tuned,
                 system_prompt=system_prompt,
             )
@@ -334,7 +305,7 @@ def run_icm_search(
                 flip_cnt, args.initial_T, args.final_T, args.decay, schedule=args.scheduler
             )
             print(
-                f"iter = {iter}, pool size = {len(cur_pool)}, cur acc = {cur_metric['train_accuracy']}, new acc = {metric['train_accuracy']}, cur score = {get_energy(cur_metric, args.alpha)}, new score = {get_energy(metric, args.alpha)}, cur inconsistent num = {cur_metric['inconsistent_num']}, new inconsistent num = {metric['inconsistent_num']}"
+                f"iter = {iter}, pool size = {len(cur_pool)}, cur acc = {cur_metric['train_accuracy']}, new acc = {metric['train_accuracy']}, cur score = {get_energy(cur_metric, args.alpha)}, new score = {get_energy(metric, args.alpha)}"
             )
             print(
                 "cur label distribution = ",

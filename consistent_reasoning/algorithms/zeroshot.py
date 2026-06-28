@@ -13,8 +13,6 @@ from tqdm import tqdm
 from consistent_reasoning.models import OpenAICompatLLM
 from consistent_reasoning.prompt_utils import get_judge_prompt_fewshot
 
-_LABEL_CHOICES: list[str] = ["True", "False"]
-
 
 def run_zeroshot_search(
     demonstrations: dict[int, dict[str, Any]],
@@ -23,25 +21,25 @@ def run_zeroshot_search(
     llm: OpenAICompatLLM,
     log_path: Path | str | None,
     *,
-    verbose_steps: bool = False,
+    verbose: bool = False,
 ) -> tuple[dict[int, dict[str, Any]], dict[str, Any]]:
-    no_trailing_space = bool(getattr(args, "no_trailing_space", False))
-    label_choices: list[str] = [" True", " False"] if no_trailing_space else list(_LABEL_CHOICES)
+    label_choices: list[str] = ["True", "False"] if llm.instruction_tuned else [" True", " False"]
 
     if log_path is not None:
         log_path = Path(log_path)
         log_path.unlink(missing_ok=True)
 
-    print(
-        f"[zeroshot]: N={len(whole_ids)} items "
-        f"(T={llm.temperature}, no_trailing_space={no_trailing_space})"
-    )
+    if verbose:
+        print(f"[zeroshot]: N={len(whole_ids)} items (T={llm.temperature})")
+
+    parallel = getattr(args, "num_workers", 1) > 1
+    pbar = tqdm(total=len(whole_ids), desc="zeroshot", disable=parallel)
 
     final_demos = deepcopy(demonstrations)
-    for uid in tqdm(whole_ids, desc="zeroshot"):
+    for uid in pbar:
         example = final_demos[uid]
         prompt = cast(str, get_judge_prompt_fewshot(example, [], pipeline=False))
-        if no_trailing_space and prompt.endswith(" "):
+        if prompt.endswith(" "):
             prompt = prompt[:-1]
 
         chosen = llm.generate(prompt, schema=label_choices, verbose=False)
@@ -64,7 +62,7 @@ def run_zeroshot_search(
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_record, default=str) + "\n")
 
-        if verbose_steps:
+        if verbose:
             print(
                 f"[zeroshot] uid={uid} -> {bool(value)} "
                 f"(vanilla={int(bool(example['vanilla_label']))})"

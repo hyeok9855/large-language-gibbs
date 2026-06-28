@@ -14,7 +14,6 @@ from tqdm import tqdm
 from priorbot.priors import GibbsLLMPrior, Prior
 from consistent_reasoning.models import OpenAICompatLLM
 from consistent_reasoning.algorithms.gibbs import (
-    _LABEL_CHOICES,
     _hierarchical_demo_order,
     build_schema,
     apply_assignment_to_demos,
@@ -27,15 +26,14 @@ class ICMBarkerConditionalPrior(Prior):
         self,
         llm: OpenAICompatLLM,
         demonstrations: dict[int, dict[str, Any]],
-        no_trailing_space: bool = False,
     ):
         super().__init__()
         self.llm = llm
-        assert not (self.llm.instruction_tuned and no_trailing_space)
         self.demonstrations = demonstrations
-        self.no_trailing_space = bool(no_trailing_space)
         if not self.llm.instruction_tuned:
-            raise NotImplementedError("Barker Gibbs variant is only supported for instruction-tuned models.")
+            raise NotImplementedError(
+                "Barker Gibbs variant is only supported for instruction-tuned models."
+            )
         self._label_choices = ["Option 1", "Option 2"]
 
     def sample(
@@ -201,36 +199,30 @@ def run_barker_gibbs_search(
     llm: OpenAICompatLLM,
     log_path: Path | str | None,
     *,
-    verbose_steps: bool = False,
+    verbose: bool = False,
 ) -> tuple[dict[int, dict[str, Any]], dict[str, Any]]:
     schema = build_schema(whole_ids)
 
     sweep = bool(getattr(args, "sweep", False))
-    no_trailing_space = bool(getattr(args, "no_trailing_space", False))
     parallel = getattr(args, "num_workers", 1) > 1
     if not parallel:
         print(
             f"[barker_gibbs]: full-batch Barker Gibbs over N={len(whole_ids)} "
             f"variables (T={llm.temperature}, burn_in={args.burn_in}, "
-            f"thinning={args.thinning}, num_samples={args.num_samples}, "
-            f"sweep={sweep}, no_trailing_space={no_trailing_space})"
+            f"thinning={args.thinning}, num_samples={args.num_samples}, sweep={sweep})"
         )
 
     if log_path is not None:
         log_path = Path(log_path)
         log_path.unlink(missing_ok=True)
 
-    base_prior = ICMBarkerConditionalPrior(
-        llm=llm,
-        demonstrations=demonstrations,
-        no_trailing_space=no_trailing_space,
-    )
+    base_prior = ICMBarkerConditionalPrior(llm=llm, demonstrations=demonstrations)
 
     state = {"step": 0}
 
     def on_step(_local_step: int, current: dict[str, Any], resampled_key: str) -> None:
         state["step"] += 1
-        if not verbose_steps:
+        if not verbose:
             return
         metrics = evaluate_assignment(demonstrations, current)
         if log_path is not None:
@@ -243,7 +235,7 @@ def run_barker_gibbs_search(
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_record, default=str) + "\n")
 
-        if verbose_steps:
+        if verbose:
             print(
                 f"[step {state['step']:>5}] resampled uid={int(resampled_key):>4} "
                 f"-> {bool(current[resampled_key])} | "

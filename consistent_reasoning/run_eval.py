@@ -64,7 +64,6 @@ ICM_CACHE_KEY_FIELDS = (
     "initial_T",
     "final_T",
     "scheduler",
-    "no_trailing_space",
     "model",
     "instruction_tuned",
     "system_prompt",
@@ -75,14 +74,12 @@ GIBBS_CACHE_KEY_FIELDS = (
     "thinning",
     "num_samples",
     "sweep",
-    "no_trailing_space",
     "model",
     "instruction_tuned",
     "system_prompt",
 )
 ZEROSHOT_CACHE_KEY_FIELDS = (
     "temperature",
-    "no_trailing_space",
     "model",
     "instruction_tuned",
     "system_prompt",
@@ -90,8 +87,7 @@ ZEROSHOT_CACHE_KEY_FIELDS = (
 NPASS_CACHE_KEY_FIELDS = (
     "temperature",
     "n_passes",
-    "all_passes",
-    "no_trailing_space",
+    "all_pass",
     "model",
     "instruction_tuned",
     "system_prompt",
@@ -268,7 +264,7 @@ def _run_label_predict_chunk(
     model_api: Any,
     run_name: str,
     search_fn: Any,
-    verbose_steps: bool = True,
+    verbose: bool = False,
 ) -> dict[str, Any]:
     chunk_cids = [item["consistency_id"] for item in items]
     cache_args = relevant_args_snapshot(args)
@@ -309,7 +305,7 @@ def _run_label_predict_chunk(
         args,
         model_api,
         log_path=log_path,
-        verbose_steps=verbose_steps,
+        verbose=verbose,
     )
     duration = time.time() - t0
 
@@ -374,7 +370,7 @@ def run_gibbs_chunk(**kwargs: Any) -> dict[str, Any]:
     parallel = getattr(args, "num_workers", 1) > 1
     return _run_label_predict_chunk(
         search_fn=run_gibbs_search,
-        verbose_steps=not parallel,
+        verbose=not parallel,
         **kwargs,
     )
 
@@ -384,7 +380,7 @@ def run_barker_gibbs_chunk(**kwargs: Any) -> dict[str, Any]:
     parallel = getattr(args, "num_workers", 1) > 1
     return _run_label_predict_chunk(
         search_fn=run_barker_gibbs_search,
-        verbose_steps=not parallel,
+        verbose=not parallel,
         **kwargs,
     )
 
@@ -394,17 +390,21 @@ def run_gambling_gibbs_chunk(**kwargs: Any) -> dict[str, Any]:
     parallel = getattr(args, "num_workers", 1) > 1
     return _run_label_predict_chunk(
         search_fn=run_gambling_gibbs_search,
-        verbose_steps=not parallel,
+        verbose=not parallel,
         **kwargs,
     )
 
 
 def run_zeroshot_chunk(**kwargs: Any) -> dict[str, Any]:
-    return _run_label_predict_chunk(search_fn=run_zeroshot_search, verbose_steps=False, **kwargs)
+    args = kwargs["args"]
+    parallel = getattr(args, "num_workers", 1) > 1
+    return _run_label_predict_chunk(search_fn=run_zeroshot_search, verbose=not parallel, **kwargs)
 
 
 def run_npass_chunk(**kwargs: Any) -> dict[str, Any]:
-    return _run_label_predict_chunk(search_fn=run_npass_search, verbose_steps=False, **kwargs)
+    args = kwargs["args"]
+    parallel = getattr(args, "num_workers", 1) > 1
+    return _run_label_predict_chunk(search_fn=run_npass_search, verbose=not parallel, **kwargs)
 
 
 def _run_single_chunk(
@@ -606,7 +606,6 @@ def _print_plan(
     print("=== run plan ===")
     print(f"  algorithm           : {args.algorithm}")
     print(f"  testbed             : {args.testbed}")
-    print(f"  eval_set            : {args.eval_set}")
     print(
         f"  CIs in eval set     : {len(eval_set['consistency_ids'])} "
         f"(group_size={eval_set['group_size']}, items={eval_set['n_items']})"
@@ -633,7 +632,7 @@ def _print_plan(
 def main(args: argparse.Namespace) -> None:
     setup_environment(logger_level="error")
 
-    eval_set = load_eval_set(args.eval_set)
+    eval_set = load_eval_set(CONSISTENT_REASONING_DIR / "eval_sets" / f"{args.testbed}.json")
     if eval_set["testbed"] != args.testbed:
         raise ValueError(
             f"eval_set testbed={eval_set['testbed']!r} does not match "
@@ -751,10 +750,6 @@ def main(args: argparse.Namespace) -> None:
             run_name=args.run_name,
         )
 
-    if args.skip_aggregate:
-        print("\n[skip_aggregate] not aggregating.")
-        return
-
     missing = [
         (p_info["partition_index"], c)
         for p_info in partitions
@@ -790,15 +785,13 @@ if __name__ == "__main__":
         choices=["alpaca", "gsm8k", "truthfulQA", "truthfulQA-preference"],
         required=True,
     )
-    parser.add_argument(
-        "--eval_set",
-        type=Path,
-        default=None,
-        help="Path to eval-set JSON.",
-    )
 
     parser.add_argument("--n_partitions", type=int, default=5)
     parser.add_argument("--partition_base_seed", type=int, default=42)
+    parser.add_argument(
+        "--system_prompt", type=str, default=None, help="System prompt for instruction-tuned models"
+    )
+
     parser.add_argument(
         "--chunk_size_cis",
         type=int,
@@ -816,111 +809,37 @@ if __name__ == "__main__":
     parser.add_argument("--scheduler", type=str, default="log")
 
     # Algorithm hyperparams (Gibbs)
-    parser.add_argument(
-        "--temperature",
-        type=float,
-        default=1.0,
-        help="(gibbs) Bernoulli temperature applied to the LLM log-odds.",
-    )
-    parser.add_argument(
-        "--num_samples",
-        type=int,
-        default=25,
-        help="(gibbs) Number of retained samples.",
-    )
-
-    parser.add_argument(
-        "--system_prompt", type=str, default=None, help="System prompt for instruction-tuned models"
-    )
-    parser.add_argument(
-        "--burn_in",
-        type=int,
-        default=None,
-        help="(gibbs) Number of Gibbs steps to discard before collecting samples.",
-    )
-    parser.add_argument(
-        "--thinning",
-        type=int,
-        default=None,
-        help="(gibbs) Number of Gibbs steps between retained samples.",
-    )
-    parser.add_argument(
-        "--no_sweep",
-        dest="sweep",
-        action="store_false",
-        help="(gibbs) Do not use a systematic sweep.",
-    )
-    parser.add_argument(
-        "--manual_reasoning",
-        action="store_true",
-        help="(gambling_gibbs) Use step-by-step reasoning.",
-    )
+    parser.add_argument("--temperature", type=float, default=1.0)
+    parser.add_argument("--num_samples", type=int, default=25)
+    parser.add_argument("--burn_in", type=int, default=None)
+    parser.add_argument("--thinning", type=int, default=None)
+    parser.add_argument("--no_sweep", dest="sweep", action="store_false")
+    parser.add_argument("--manual_reasoning", action="store_true")
 
     # Algorithm hyperparams (NPass)
-    parser.add_argument(
-        "--n_passes",
-        type=int,
-        default=4,
-    )
-    parser.add_argument(
-        "--all_passes",
-        action="store_true",
-    )
-
-    parser.add_argument(
-        "--no_trailing_space",
-        action="store_true",
-    )
+    parser.add_argument("--n_passes", type=int, default=4)
+    parser.add_argument("--all_pass", action="store_true")
 
     # Model
     parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-8B")
     parser.add_argument("--port", type=int, default=8000)
 
     # Output / control
+    parser.add_argument("--output_dir", type=Path, default=None)
+    parser.add_argument("--exp_name", type=str, default=None)
     parser.add_argument(
-        "--output_dir",
-        type=Path,
-        default=None,
-        help="Directory to write results to.",
+        "--only_partition", type=int, default=None, help="If set, run only this partition index."
     )
-    parser.add_argument(
-        "--run_name",
-        type=str,
-        default=None,
-        help="Name of the run.",
-    )
-    parser.add_argument(
-        "--only_partition",
-        type=int,
-        default=None,
-        help="If set, run only this partition index.",
-    )
-    parser.add_argument(
-        "--skip_aggregate",
-        action="store_true",
-        help="Skip aggregation.",
-    )
-    parser.add_argument(
-        "--num_workers",
-        type=int,
-        default=1,
-        help="Number of chunks to run concurrently.",
-    )
+    parser.add_argument("--num_workers", type=int, default=1)
 
     args = parser.parse_args()
 
     if args.num_workers < 1:
         raise ValueError(f"--num_workers must be >= 1, got {args.num_workers}.")
 
-    if args.eval_set is None:
-        args.eval_set = CONSISTENT_REASONING_DIR / "eval_sets" / f"{args.testbed}.json"
-
     args.instruction_tuned = False
     if args.model in INSTRUCT_MODELS:
         args.instruction_tuned = True
-
-    if args.instruction_tuned:
-        args.no_trailing_space = False
 
     if args.system_prompt is None and args.instruction_tuned:
         args.system_prompt = (
@@ -944,17 +863,15 @@ if __name__ == "__main__":
         model_short = args.model.split("/")[-1]
 
         if args.algorithm == "icm":
-            nots = "_nots" if args.no_trailing_space else ""
             return (
                 f"icm_{model_short}"
                 f"_K{args.K}_a{args.alpha}_iT{args.initial_T}_fT{args.final_T}"
-                f"_{args.scheduler}_decay{args.decay}_ns{args.num_seed}{nots}"
+                f"_{args.scheduler}_decay{args.decay}_ns{args.num_seed}"
                 f"_cs{args.chunk_size_cis}"
                 f"_baseseed{args.partition_base_seed}"
             )
         if args.algorithm in ("gibbs", "barker_gibbs", "gambling_gibbs"):
             scan = "_sweep" if args.sweep else ""
-            nots = "_nots" if args.no_trailing_space else ""
             reasoning = "_reasoning" if getattr(args, "manual_reasoning", False) else ""
             if args.algorithm == "gibbs":
                 prefix = "gibbs_"
@@ -965,35 +882,32 @@ if __name__ == "__main__":
             return (
                 f"{prefix}{model_short}"
                 f"_T{args.temperature}_burn{args.burn_in}_thin{args.thinning}"
-                f"_K{args.num_samples}{scan}{nots}{reasoning}_cs{args.chunk_size_cis}"
+                f"_K{args.num_samples}{scan}{reasoning}_cs{args.chunk_size_cis}"
                 f"_baseseed{args.partition_base_seed}"
             )
         if args.algorithm == "zeroshot":
-            nots = "_nots" if args.no_trailing_space else ""
             return (
                 f"zeroshot_{model_short}"
-                f"_T{args.temperature}{nots}"
+                f"_T{args.temperature}"
                 f"_baseseed{args.partition_base_seed}"
             )
         if args.algorithm == "npass":
-            nots = "_nots" if args.no_trailing_space else ""
-            n_str = "Nall" if args.all_passes else f"N{args.n_passes}"
+            n_str = "Nall" if args.all_pass else f"N{args.n_passes}"
             return (
                 f"npass_{model_short}"
-                f"_T{args.temperature}_{n_str}{nots}"
+                f"_T{args.temperature}_{n_str}"
                 f"_baseseed{args.partition_base_seed}"
             )
         raise ValueError(f"Unsupported algorithm: {args.algorithm}")
 
-    if args.run_name is None:
-        args.run_name = derive_run_name(args)
+    args.run_name = (args.exp_name + "__" if args.exp_name else "") + derive_run_name(args)
 
     if args.output_dir is None:
         args.output_dir = (
             CONSISTENT_REASONING_DIR
             / "eval_results"
-            / args.algorithm
             / args.testbed
+            / args.algorithm
             / args.run_name
         )
 

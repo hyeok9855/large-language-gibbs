@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
-import math
 import random
 from collections import Counter, defaultdict
 from copy import deepcopy
@@ -16,29 +15,20 @@ from tqdm import tqdm
 from consistent_reasoning.models import OpenAICompatLLM
 from consistent_reasoning.prompt_utils import get_judge_prompt_fewshot
 
-_LABEL_CHOICES: list[str] = ["True", "False"]
 
-
-def _enumerate_permutations(uids: list[int], n_passes: int) -> list[list[int]]:
-    g = len(uids)
-    max_n = math.factorial(g)
-    n = min(n_passes, max_n)
-
-    if n_passes >= max_n:
+def _enumerate_permutations(uids: list[int], all_pass: bool, n_passes: int) -> list[list[int]]:
+    if all_pass:
+        assert len(uids) <= 5, "All-pass mode is only supported for groups of size <= 5."
         all_perms = [list(p) for p in itertools.permutations(uids)]
         random.shuffle(all_perms)
         return all_perms
 
-    seen: set[tuple[int, ...]] = set()
+    # If not all-pass, sample n_passes permutations with replacement.
     perms: list[list[int]] = []
-    while len(perms) < n:
-        candidate = list(uids)
-        random.shuffle(candidate)
-        key = tuple(candidate)
-        if key in seen:
-            continue
-        seen.add(key)
-        perms.append(candidate)
+    while len(perms) < n_passes:
+        perm = list(uids)
+        random.shuffle(perm)
+        perms.append(perm)
     return perms
 
 
@@ -49,14 +39,11 @@ def run_npass_search(
     llm: OpenAICompatLLM,
     log_path: Path | str | None,
     *,
-    verbose_steps: bool = False,
+    verbose: bool = False,
 ) -> tuple[dict[int, dict[str, Any]], dict[str, Any]]:
-    no_trailing_space = bool(getattr(args, "no_trailing_space", False))
-    label_choices: list[str] = [" True", " False"] if no_trailing_space else list(_LABEL_CHOICES)
-    all_passes = bool(getattr(args, "all_passes", False))
-    n_passes = int(getattr(args, "n_passes", 4))
-    if not all_passes and n_passes < 1:
-        raise ValueError(f"n_passes must be >= 1 (got {n_passes}) unless all_passes=True")
+    label_choices: list[str] = ["True", "False"] if args.instruction_tuned else [" True", " False"]
+    all_pass = bool(args.all_pass)
+    n_passes = int(args.n_passes)  # When all_pass=True, n_passes is ignored.
 
     cid_to_uids: dict[Any, list[int]] = defaultdict(list)
     for uid in whole_ids:
@@ -67,37 +54,29 @@ def run_npass_search(
         log_path = Path(log_path)
         log_path.unlink(missing_ok=True)
 
-    def _effective_n_passes(group_size: int) -> int:
-        if all_passes:
-            return math.factorial(group_size)
-        return min(n_passes, math.factorial(group_size))
-
-    print(
-        f"[npass]: {len(cid_to_uids)} consistency groups "
-        f"({'all_passes' if all_passes else f'n_passes={n_passes}'}, "
-        f"T={llm.temperature}, no_trailing_space={no_trailing_space})"
-    )
+    if verbose:
+        print(
+            f"[npass]: {len(cid_to_uids)} consistency groups "
+            f"({'all_pass' if all_pass else f'n_passes={n_passes}'}, T={llm.temperature})"
+        )
 
     true_counts: dict[int, int] = {uid: 0 for uid in whole_ids}
     pred_counts: dict[int, int] = {uid: 0 for uid in whole_ids}
 
-    total_queries = sum(_effective_n_passes(len(uids)) * len(uids) for uids in cid_to_uids.values())
-    pbar = tqdm(total=total_queries, desc="npass queries")
-
-    for cid, uids in cid_to_uids.items():
-        effective_n = _effective_n_passes(len(uids))
-        permutations = _enumerate_permutations(uids, effective_n)
+    parallel = getattr(args, "num_workers", 1) > 1
+    for cid, uids in tqdm(cid_to_uids.items(), desc="npass", disable=parallel):
+        permutations = _enumerate_permutations(uids, all_pass, n_passes)
         for perm_idx, perm in enumerate(permutations):
             history: list[dict[str, Any]] = []
             for position, uid in enumerate(perm):
                 example = demonstrations[uid]
-                if getattr(args, "instruction_tuned", False):
+                if args.instruction_tuned:
                     prompt = example["prompt"]
-                    chosen = llm.generate(prompt, schema=label_choices, verbose=False, history=history)
+                    chosen = llm.generate(
+                        prompt, schema=label_choices, verbose=False, history=history
+                    )
                 else:
                     prompt = cast(str, get_judge_prompt_fewshot(example, history, pipeline=False))
-                    if no_trailing_space and prompt.endswith(" "):
-                        prompt = prompt[:-1]
                     chosen = llm.generate(prompt, schema=label_choices, verbose=False)
                 if not isinstance(chosen, str):
                     raise TypeError(
@@ -125,13 +104,11 @@ def run_npass_search(
                     with open(log_path, "a") as f:
                         f.write(json.dumps(log_record, default=str) + "\n")
 
-                if verbose_steps:
+                if verbose:
                     print(
                         f"[npass] cid={cid} perm={perm_idx} pos={position} "
                         f"uid={uid} -> {bool(value)}"
                     )
-                pbar.update(1)
-    pbar.close()
 
     final_demos = deepcopy(demonstrations)
     n_ties = 0
@@ -149,7 +126,8 @@ def run_npass_search(
             label = 1 if score > 0.5 else 0
         final_demos[uid]["label"] = int(label)
         final_demos[uid]["_predicted_score"] = float(score)
-    if n_ties:
+
+    if n_ties and verbose:
         print(f"[npass]: {n_ties}/{len(whole_ids)} items broken at random (tied 50/50)")
 
     final_metric = {

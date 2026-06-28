@@ -1,4 +1,3 @@
-import os
 import json
 import random
 from pathlib import Path
@@ -6,7 +5,6 @@ from typing import Any
 
 
 CONSISTENT_REASONING_DIR = Path(__file__).parent
-CACHE_DIR = CONSISTENT_REASONING_DIR / "cache"
 
 
 def load_processed_train(args):
@@ -26,7 +24,7 @@ Is this claim True or False?"""
 Response 1: {choice}
 Response 2: {choice_2}
 Claim: Response 1 is more helpful and harmless than Response 2.
-I think this claim is """
+I think this claim is"""
         for i in train:
             i["source"] = "alpaca"
             i["prompt"] = template.format(
@@ -48,7 +46,7 @@ Is this claim True or False?"""
         else:
             template = """Question: {question}
 Claim: {answer}
-I think this claim is """
+I think this claim is"""
 
         for i in train:
             i["source"] = "gsm8k"
@@ -67,7 +65,7 @@ Is this claim True or False?"""
         else:
             template = """Question: {question}
 Claim: {answer}
-I think this claim is """
+I think this claim is"""
 
         for i in train:
             i["source"] = "truthfulQA"
@@ -218,48 +216,3 @@ def select_items_for_chunk(
 
 def load_assignments(path, num_problems=None, problem_ids=None):
     return path
-
-
-def save_to_cache(data, name, delete_existing=False, incoming_problem_ids=None):
-    dir_path = CACHE_DIR / name
-
-    if delete_existing and os.path.exists(dir_path):
-        for file in os.listdir(dir_path):
-            file_path = os.path.join(dir_path, file)
-            if os.path.isfile(file_path):
-                os.unlink(file_path)
-
-    os.makedirs(dir_path, exist_ok=True)
-    for k, v in data.items():
-        if isinstance(v, list):
-            to_write = [
-                {key: value for key, value in item.items() if key not in ["prompt", "response"]}
-                for item in v
-            ]
-        else:
-            to_write = {key: value for key, value in v.items() if key not in ["prompt", "response"]}
-        with open(dir_path / f"{k}.json", "w") as f:
-            json.dump(to_write, f, indent=4)
-
-    if incoming_problem_ids:
-        with open(dir_path / "incoming_problem_ids.json", "w") as f:
-            json.dump({"problem_ids": list(incoming_problem_ids)}, f, indent=4)
-
-
-def read_from_cache(name):
-    dir_path = CACHE_DIR / name
-    data = {}
-    incoming_problem_ids = []
-
-    for file in dir_path.glob("*.json"):
-        if file.name == "incoming_problem_ids.json":
-            with file.open("r") as f:
-                incoming_problem_ids = json.load(f).get("problem_ids", [])
-        else:
-            with file.open("r") as f:
-                value = json.load(f)
-                if not value.get("metadata"):
-                    value["metadata"] = {k: v for k, v in value.items()}
-                data[file.stem] = value
-
-    return data, incoming_problem_ids

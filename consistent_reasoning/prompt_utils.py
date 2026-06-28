@@ -3,6 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class Prompt:
     @staticmethod
     def empty():
@@ -18,11 +19,11 @@ def get_judge_prompt_fewshot(example, demonstrations=None, pipeline=True):
         demonstrations = list(example["demonstration"].values())
     prompt = ""
     for i in demonstrations:
-        prompt += i['prompt']
-        prompt += "True" if i["label"] else "False"
-        prompt += "\n\n"
+        prompt += i["prompt"]
+        prompt += " True" if i["label"] else " False"
+        prompt += ".\n\n"
 
-    prompt += example['prompt']
+    prompt += example["prompt"]
 
     if pipeline:
         return Prompt(prompt)
@@ -76,18 +77,8 @@ def extract_decision_logprobs(response):
     return response
 
 
-def _strip_one_trailing_space(prompt_or_text):
-    if isinstance(prompt_or_text, str):
-        return prompt_or_text[:-1] if prompt_or_text.endswith(" ") else prompt_or_text
-    if isinstance(prompt_or_text, Prompt) and isinstance(prompt_or_text.text, str):
-        if prompt_or_text.text.endswith(" "):
-            prompt_or_text.text = prompt_or_text.text[:-1]
-    return prompt_or_text
-
-
-def _make_judge_prompt_creator(no_trailing_space, instruction_tuned=False, system_prompt=""):
+def _make_judge_prompt_creator(instruction_tuned=False, system_prompt=""):
     if instruction_tuned:
-        assert not no_trailing_space
 
         def _wrapped_chat(example, demonstrations=None, pipeline=True):
             if demonstrations is None:
@@ -109,12 +100,4 @@ def _make_judge_prompt_creator(no_trailing_space, instruction_tuned=False, syste
 
         return _wrapped_chat
 
-    if not no_trailing_space:
-        return get_judge_prompt_fewshot
-
-    def _wrapped(example, demonstrations=None, pipeline=True):
-        return _strip_one_trailing_space(
-            get_judge_prompt_fewshot(example, demonstrations, pipeline=pipeline)
-        )
-
-    return _wrapped
+    return get_judge_prompt_fewshot

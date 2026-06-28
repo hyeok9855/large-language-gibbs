@@ -74,13 +74,11 @@ This experiment requires additional dependencies beyond the base project install
 uv sync --extra consistent-reasoning
 ```
 
-#### API for Pretrained Base Models
-
 You should have access to an OpenAI-compatible API for pretrained base models that can return top-K token logprobs (specifically 20). 
 
 We recommend deploying models using [vLLM](https://github.com/vllm-project/vllm). For example, to host `meta-llama/Llama-3.1-8B` locally:
 ```bash
-vllm serve meta-llama/Llama-3.1-8B --port 8000 --max-num-seqs 32 --enable-prefix-caching
+vllm serve meta-llama/Llama-3.1-8B --port 8000 --max-num-seqs 32
 ```
 
 - **Port & URL Configuration**:
@@ -89,9 +87,6 @@ vllm serve meta-llama/Llama-3.1-8B --port 8000 --max-num-seqs 32 --enable-prefix
     ```bash
     export LLAMA_API_BASE=http://localhost:<your_port>/v1
     ```
-
-> [!TIP]
-> We highly recommend activating prefix caching (`--enable-prefix-caching` in vLLM) to accelerate experiments, as the MCMC algorithms generate many queries sharing large common prompt prefixes.
 
 ### Data Preparation
 
