@@ -76,10 +76,11 @@ NUMBER_PATTERN = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
 
 def parse_parameter_dir(target, dirname):
     if target == "uniform":
-        match = re.fullmatch(r"max(\d+)", dirname)
+        match = re.fullmatch(r"min(\d+)_max(\d+)", dirname)
         if match:
-            maxnum = int(match.group(1))
-            return {"maxnum": maxnum}
+            minnum = int(match.group(1))
+            maxnum = int(match.group(2))
+            return {"minnum": minnum, "maxnum": maxnum}
     elif target == "gaussian":
         match = re.fullmatch(rf"mean({NUMBER_PATTERN})_std({NUMBER_PATTERN})", dirname)
         if match:
@@ -131,9 +132,10 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
         return
 
     if target_name == "uniform":
+        minnum = params["minnum"]
         maxnum = params["maxnum"]
-        n_bins = min(50, maxnum + 1)
-        bin_edges = np.linspace(0, maxnum, n_bins + 1)
+        n_bins = min(50, maxnum - minnum + 1)
+        bin_edges = np.linspace(minnum, maxnum, n_bins + 1)
     elif target_name == "gaussian":
         mean = params["mean"]
         std = params["std"]
@@ -254,7 +256,7 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
         )
 
         if target_name == "uniform":
-            true_density = 1.0 / (params["maxnum"] + 1)
+            true_density = 1.0 / (params["maxnum"] - params["minnum"] + 1)
 
             ax.axhline(
                 y=true_density,
@@ -262,7 +264,7 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
                 linestyle="--",
                 label="True Distribution",
             )
-            ax.set_xlim(0, maxnum)
+            ax.set_xlim(minnum, maxnum)
         elif target_name == "gaussian":
             x_vals = np.linspace(mean - 4 * std, mean + 4 * std, 200)
             y_vals = (1 / (std * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x_vals - mean) / std) ** 2)

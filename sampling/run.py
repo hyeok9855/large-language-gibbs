@@ -5,12 +5,7 @@ import random
 from copy import deepcopy
 
 from priorbot.llm import OpenAICompatLLM
-from priorbot.priors import (
-    BarkerGibbsLLMPrior,
-    GamblingGibbsLLMPrior,
-    GibbsLLMPrior,
-    LLMPrior,
-)
+from priorbot.priors import BarkerGibbsLLMPrior, GamblingGibbsLLMPrior, GibbsLLMPrior, LLMPrior
 from sampling.utils import MODEL_NAME_TO_TYPE, RESULTS_DIR
 
 
@@ -27,7 +22,7 @@ def main(args: argparse.Namespace):
         outdir = RESULTS_DIR / args.target
 
         if args.target == "uniform":
-            outdir = outdir / f"max{args.maxnum}"
+            outdir = outdir / f"min{args.minnum}_max{args.maxnum}"
         elif args.target == "gaussian":
             outdir = outdir / f"mean{args.mean}_std{args.std}"
         else:
@@ -358,6 +353,7 @@ if __name__ == "__main__":
     )
 
     # Uniform distribution parameters
+    parser.add_argument("--minnum", type=int, default=0)
     parser.add_argument("--maxnum", type=int, default=99)
 
     # LLM parameters

@@ -7,20 +7,25 @@ def create_template_and_schema(
     method: str, args: Namespace
 ) -> tuple[Callable[..., str], dict[str, Any]]:
     model_type = args.model_type
+    minnum = args.minnum
     maxnum = args.maxnum
+    assert minnum < maxnum
+    uniform_dist_str = (
+        f"a uniform distribution over the integers in {{{minnum}, {minnum+1}, ..., {maxnum} }}"
+    )
 
     # Independent Sampling
     if method == "indep":
         if model_type == "base":
 
             def template(schema: dict[str, Any], observed=None) -> str:
-                return f"Here is a random sample from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}, formatted as JSON:\n"
+                return f"Here is a random sample from {uniform_dist_str}, formatted as JSON:\n"
 
         else:
 
             def template(schema: dict[str, Any], observed=None) -> str:
                 return (
-                    f"Draw a random sample from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}. "
+                    f"Draw a random sample from {uniform_dist_str}. "
                     f"Respond with JSON that follows this schema: {json.dumps(schema)}"
                 )
 
@@ -29,7 +34,7 @@ def create_template_and_schema(
             "properties": {
                 "sample": {
                     "type": "integer",
-                    "minimum": 0,
+                    "minimum": minnum,
                     "maximum": maxnum,
                 }
             },
@@ -45,13 +50,13 @@ def create_template_and_schema(
         if model_type == "base":
 
             def template(schema: dict[str, Any], observed=None) -> str:
-                return f"Here are {n_samples_per_chain} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}, formatted as JSON:\n"
+                return f"Here are {n_samples_per_chain} iid samples from {uniform_dist_str}, formatted as JSON:\n"
 
         else:
 
             def template(schema: dict[str, Any], observed=None) -> str:
                 return (
-                    f"Draw {n_samples_per_chain} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}. "
+                    f"Draw {n_samples_per_chain} iid samples from {uniform_dist_str}. "
                     f"Respond with JSON that follows this schema: {json.dumps(schema)}"
                 )
 
@@ -62,7 +67,7 @@ def create_template_and_schema(
                     "type": "array",
                     "items": {
                         "type": "integer",
-                        "minimum": 0,
+                        "minimum": minnum,
                         "maximum": maxnum,
                     },
                     "minItems": n_samples_per_chain,
@@ -81,7 +86,7 @@ def create_template_and_schema(
         "properties": {
             f"X{i}": {
                 "type": "integer",
-                "minimum": 0,
+                "minimum": minnum,
                 "maximum": maxnum,
             }
             for i in range(k_vars)
@@ -96,11 +101,11 @@ def create_template_and_schema(
 
             def template(schema: dict[str, Any], observed: dict[str, Any] | None = None) -> str:
                 if observed is None:
-                    return f"Here are {k_vars} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}, formatted as JSON:\n"
+                    return f"Here are {k_vars} iid samples from {uniform_dist_str}, formatted as JSON:\n"
 
                 n_missing = len(schema["properties"])
                 _template = (
-                    f"Here are {len(observed)} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}:\n"
+                    f"Here are {len(observed)} iid samples from {uniform_dist_str}:\n"
                     f"{json.dumps(observed)}\n"
                 )
                 _template += (
@@ -115,13 +120,13 @@ def create_template_and_schema(
             def template(schema: dict[str, Any], observed: dict[str, Any] | None = None) -> str:
                 if observed is None:
                     return (
-                        f"Draw {k_vars} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}. "
+                        f"Draw {k_vars} iid samples from {uniform_dist_str}. "
                         f"Respond with JSON that follows this schema: {json.dumps(schema)}"
                     )
 
                 n_missing = len(schema["properties"])
                 _template = (
-                    f"You are generating {k_vars} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}. "
+                    f"You are generating {k_vars} iid samples from {uniform_dist_str}. "
                     f"You have already observed {len(observed)} iid samples: {json.dumps(observed)}\n"
                 )
                 _template += (
@@ -146,7 +151,7 @@ def create_template_and_schema(
             output_schema: dict[str, Any],
             observed: dict[str, Any] | None = None,
         ) -> str:
-            _template = f"You are generating {k_vars} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}. "
+            _template = f"You are generating {k_vars} iid samples from {uniform_dist_str}. "
             if observed:
                 _template += f"You have already observed {len(observed)} iid samples: {json.dumps(observed)}\n"
             option1_str = json.dumps(option1)
@@ -171,7 +176,7 @@ def create_template_and_schema(
             bet_value: float,
             observed: dict[str, Any] | None = None,
         ) -> str:
-            _template = f"You are generating {k_vars} iid samples from a uniform distribution over the integers in {{0, 1, ..., {maxnum}}}. "
+            _template = f"You are generating {k_vars} iid samples from {uniform_dist_str}. "
             if observed:
                 _template += f"You have already observed {len(observed)} iid samples: {json.dumps(observed)}\n"
             option1_str = json.dumps(option1)

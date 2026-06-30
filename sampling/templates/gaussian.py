@@ -13,19 +13,20 @@ def create_template_and_schema(
     std = args.std
     mcmc_sigma_multiplier = args.mcmc_sigma_multiplier
     assert std > 0 and mcmc_sigma_multiplier > 0
+    gaussian_dist_str = f"a Gaussian distribution with mean {mean} and standard deviation {std}"
 
     # Independent Sampling
     if method == "indep":
         if model_type == "base":
 
             def template(schema: dict[str, Any], observed=None) -> str:
-                return f"Here is a random sample from a Gaussian distribution with mean {mean} and standard deviation {std}, formatted as JSON:\n"
+                return f"Here is a random sample from {gaussian_dist_str}, formatted as JSON:\n"
 
         else:
 
             def template(schema: dict[str, Any], observed=None) -> str:
                 return (
-                    f"Draw a random sample from a Gaussian distribution with mean {mean} and standard deviation {std}. "
+                    f"Draw a random sample from {gaussian_dist_str}. "
                     f"Respond with JSON that follows this schema: {json.dumps(schema)}"
                 )
 
@@ -50,13 +51,13 @@ def create_template_and_schema(
         if model_type == "base":
 
             def template(schema: dict[str, Any], observed=None) -> str:
-                return f"Here are {n_samples_per_chain} iid samples from a Gaussian distribution with mean {mean} and standard deviation {std}, formatted as JSON:\n"
+                return f"Here are {n_samples_per_chain} iid samples from {gaussian_dist_str}, formatted as JSON:\n"
 
         else:
 
             def template(schema: dict[str, Any], observed=None) -> str:
                 return (
-                    f"Draw {n_samples_per_chain} iid samples from a Gaussian distribution with mean {mean} and standard deviation {std}. "
+                    f"Draw {n_samples_per_chain} iid samples from {gaussian_dist_str}. "
                     f"Respond with JSON that follows this schema: {json.dumps(schema)}"
                 )
 
@@ -101,11 +102,11 @@ def create_template_and_schema(
 
             def template(schema: dict[str, Any], observed: dict[str, Any] | None = None) -> str:
                 if observed is None:
-                    return f"Here are {k_vars} iid samples from a Gaussian distribution with mean {mean} and standard deviation {std}, formatted as JSON:\n"
+                    return f"Here are {k_vars} iid samples from {gaussian_dist_str}, formatted as JSON:\n"
 
                 n_missing = len(schema["properties"])
                 _template = (
-                    f"Here are {len(observed)} iid samples from a Gaussian distribution with mean {mean} and standard deviation {std}:\n"
+                    f"Here are {len(observed)} iid samples from {gaussian_dist_str}:\n"
                     f"{json.dumps(round_dict(observed))}\n"
                 )
                 _template += (
@@ -120,13 +121,13 @@ def create_template_and_schema(
             def template(schema: dict[str, Any], observed: dict[str, Any] | None = None) -> str:
                 if observed is None:
                     return (
-                        f"Draw {k_vars} iid samples from a Gaussian distribution with mean {mean} and standard deviation {std}. "
+                        f"Draw {k_vars} iid samples from {gaussian_dist_str}. "
                         f"Respond with JSON that follows this schema: {json.dumps(schema)}"
                     )
 
                 n_missing = len(schema["properties"])
                 _template = (
-                    f"You are generating {k_vars} iid samples from a Gaussian distribution with mean {mean} and standard deviation {std}. "
+                    f"You are generating {k_vars} iid samples from {gaussian_dist_str}. "
                     f"You have already observed {len(observed)} iid samples: {json.dumps(round_dict(observed))}\n"
                 )
                 _template += (
@@ -151,7 +152,7 @@ def create_template_and_schema(
             output_schema: dict[str, Any],
             observed: dict[str, Any] | None = None,
         ) -> str:
-            _template = f"You are generating {k_vars} iid samples from a Gaussian distribution with mean {mean} and standard deviation {std}. "
+            _template = f"You are generating {k_vars} iid samples from {gaussian_dist_str}. "
             if observed:
                 _template += f"You have already observed {len(observed)} iid samples: {json.dumps(round_dict(observed))}\n"
             option1_str = json.dumps(round_dict(option1))
@@ -176,7 +177,7 @@ def create_template_and_schema(
             bet_value: float,
             observed: dict[str, Any] | None = None,
         ) -> str:
-            _template = f"You are generating {k_vars} iid samples from a Gaussian distribution with mean {mean} and standard deviation {std}. "
+            _template = f"You are generating {k_vars} iid samples from {gaussian_dist_str}. "
             if observed:
                 _template += f"You have already observed {len(observed)} iid samples: {json.dumps(round_dict(observed))}\n"
             option1_str = json.dumps(round_dict(option1))
