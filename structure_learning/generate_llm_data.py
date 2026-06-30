@@ -72,10 +72,8 @@ def main(args: Namespace) -> None:
         temperature=args.temperature,
         top_p=args.top_p,
         max_tokens=4096 if args.manual_reasoning else 512,
+        use_chat_api=args.model_type == "instruct",
     )
-    llm._use_chat_api = True
-    if args.model_type == "base":
-        llm._use_chat_api = False
 
     match args.sampling_method:
         case "direct" | "gibbs":

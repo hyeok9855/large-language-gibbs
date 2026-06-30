@@ -14,6 +14,10 @@ RESULTS_DIR = Path(__file__).resolve().parent / "results"
 METHOD_DISPLAY_PATTERNS = [
     (re.compile(r"^independent(?:_reasoning)?$"), "Independent"),
     (re.compile(r"^batch(?:_reasoning)?(?:_nc\d+)?$"), "Batch"),
+    (
+        re.compile(r"^direct(?:_reasoning)?_k\d+(?:_nc\d+)?$"),
+        "Direct",
+    ),
     (re.compile(r"^gibbs(?:_reasoning)?_k\d+_b(?P<b>\d+)(?:_nc\d+)?$"), "Gibbs (B={b})"),
     (
         re.compile(r"^barkergibbs(?:_reasoning)?_k\d+_b(?P<b>\d+)(?:_nc\d+)?$"),

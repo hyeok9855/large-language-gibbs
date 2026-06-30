@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import random
+from copy import deepcopy
 
 from priorbot.llm import OpenAICompatLLM
 from priorbot.priors import (
@@ -124,9 +125,56 @@ def main(args: argparse.Namespace):
 
             with open(batch_out_path, "w") as f:
                 json.dump(batch_samples_flat, f)
+            batch_samples_flat = batch_samples_flat[: args.n_samples]
+            assert len(batch_samples_flat) == args.n_samples
             print(f"Saved {len(batch_samples_flat)} samples to {batch_out_path}")
 
-    # 3. Gibbs Sampling
+    # 3. Direct Sampling (single-pass, random feature order)
+    if "direct" in args.methods:
+        print("\n--- Running Direct Sampling ---")
+        direct_out_path = (
+            out_dir
+            / f"direct{'_reasoning' if args.manual_reasoning else ''}_k{args.gibbs_k_vars}_nc{args.n_chains}_seed{args.seed}.json"
+        )
+        if direct_out_path.exists():
+            print(f"Results already exist at {direct_out_path}, skipping...")
+        else:
+            assert args.n_samples % args.gibbs_k_vars == 0
+            direct_n_samples = args.n_samples // args.gibbs_k_vars
+            llm = OpenAICompatLLM(
+                **llm_common_kwargs,
+                temperature=args.temperature,
+                max_tokens=args.gibbs_k_vars * 32 + (1024 if args.manual_reasoning else 0),
+            )
+            direct_template, direct_schema = create_template_and_schema("direct", args)
+            direct_prior = LLMPrior(
+                llm=llm,
+                template=direct_template,
+                shuffle_variables=True,
+                manual_reasoning=args.manual_reasoning,
+            )
+            direct_prior.reasoning_prompt = direct_prior.reasoning_prompt.replace(
+                "step-by-step", "brief"
+            )
+            direct_samples = direct_prior.sample_parallel(
+                direct_n_samples // args.n_chains,
+                [deepcopy(direct_schema) for _ in range(args.n_chains)],
+                verbose=args.verbose,
+                pbar=True,
+            )
+
+            direct_samples_flat = []
+            for s_chain in direct_samples:
+                for s in s_chain:
+                    direct_samples_flat += [s[f"X{i}"] for i in range(args.gibbs_k_vars)]
+            direct_samples_flat = direct_samples_flat[: args.n_samples]
+            assert len(direct_samples_flat) == args.n_samples
+
+            with open(direct_out_path, "w") as f:
+                json.dump(direct_samples_flat, f)
+            print(f"Saved {len(direct_samples_flat)} samples to {direct_out_path}")
+
+    # 4. Gibbs Sampling
     if "gibbs" in args.methods:
         print("\n--- Running Gibbs Sampling ---")
         # Check if the results already exist
@@ -137,6 +185,7 @@ def main(args: argparse.Namespace):
         if gibbs_out_path.exists():
             print(f"Results already exist at {gibbs_out_path}, skipping...")
         else:
+            assert args.n_samples % args.gibbs_k_vars == 0
             gibbs_n_samples = args.n_samples // args.gibbs_k_vars
             llm = OpenAICompatLLM(
                 **llm_common_kwargs,
@@ -170,12 +219,14 @@ def main(args: argparse.Namespace):
             for s_chain in gibbs_samples:
                 for s in s_chain:
                     gibbs_samples_flat += [s[f"X{i}"] for i in range(args.gibbs_k_vars)]
+            gibbs_samples_flat = gibbs_samples_flat[: args.n_samples]
+            assert len(gibbs_samples_flat) == args.n_samples
 
             with open(gibbs_out_path, "w") as f:
                 json.dump(gibbs_samples_flat, f)
             print(f"Saved {len(gibbs_samples_flat)} samples to {gibbs_out_path}")
 
-    # 4. Barker-Gibbs Sampling
+    # 5. Barker-Gibbs Sampling
     if "barker" in args.methods:
         print("\n--- Running Barker-Gibbs Sampling ---")
         barker_out_path = (
@@ -188,6 +239,7 @@ def main(args: argparse.Namespace):
             # Base models can't reliably follow the JSON-choice schema used by the acceptance step.
             print("Barker-Gibbs requires an instruct model, skipping...")
         else:
+            assert args.n_samples % args.gibbs_k_vars == 0
             gibbs_n_samples = args.n_samples // args.gibbs_k_vars
             llm = OpenAICompatLLM(
                 **llm_common_kwargs,
@@ -218,12 +270,14 @@ def main(args: argparse.Namespace):
             for s_chain in barker_samples:
                 for s in s_chain:
                     barker_samples_flat += [s[f"X{i}"] for i in range(args.gibbs_k_vars)]
+            barker_samples_flat = barker_samples_flat[: args.n_samples]
+            assert len(barker_samples_flat) == args.n_samples
 
             with open(barker_out_path, "w") as f:
                 json.dump(barker_samples_flat, f)
             print(f"Saved {len(barker_samples_flat)} samples to {barker_out_path}")
 
-    # 5. Gambling-Gibbs Sampling
+    # 6. Gambling-Gibbs Sampling
     if "gambling" in args.methods:
         print("\n--- Running Gambling-Gibbs Sampling ---")
         gambling_out_path = (
@@ -235,6 +289,7 @@ def main(args: argparse.Namespace):
         elif args.model_type != "instruct":
             print("Gambling-Gibbs requires an instruct model, skipping...")
         else:
+            assert args.n_samples % args.gibbs_k_vars == 0
             gibbs_n_samples = args.n_samples // args.gibbs_k_vars
             llm = OpenAICompatLLM(
                 **llm_common_kwargs,
@@ -265,6 +320,8 @@ def main(args: argparse.Namespace):
             for s_chain in gambling_samples:
                 for s in s_chain:
                     gambling_samples_flat += [s[f"X{i}"] for i in range(args.gibbs_k_vars)]
+            gambling_samples_flat = gambling_samples_flat[: args.n_samples]
+            assert len(gambling_samples_flat) == args.n_samples
 
             with open(gambling_out_path, "w") as f:
                 json.dump(gambling_samples_flat, f)
@@ -323,8 +380,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--methods",
         nargs="+",
-        choices=["indep", "batch", "gibbs", "barker", "gambling"],
-        default=["indep", "batch", "gibbs", "barker", "gambling"],
+        choices=["indep", "batch", "direct", "gibbs", "barker", "gambling"],
+        default=["indep", "batch", "direct", "gibbs", "barker", "gambling"],
     )
 
     parser.add_argument("--verbose", action="store_true")

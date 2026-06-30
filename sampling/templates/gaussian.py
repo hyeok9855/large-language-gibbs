@@ -94,8 +94,8 @@ def create_template_and_schema(
         "required": [f"X{i}" for i in range(k_vars)],
     }
 
-    # Gibbs Sampling
-    if method == "gibbs":
+    # Gibbs and direct sampling share the same joint-variable template
+    if method in ("gibbs", "direct"):
 
         if model_type == "base":
 
