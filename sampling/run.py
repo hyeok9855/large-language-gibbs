@@ -44,6 +44,13 @@ def main(args: argparse.Namespace):
         else "You are a helpful assistant that can sample from probability distributions."
     )
 
+    llm_common_kwargs = {
+        "model_name": args.model_name,
+        "base_url": args.base_url,
+        "system_prompt": system_prompt,
+        "use_chat_api": args.model_type == "instruct",
+    }
+
     # 1. Independent Sampling
     if "indep" in args.methods:
         print("\n--- Running Independent Sampling ---")
@@ -56,9 +63,7 @@ def main(args: argparse.Namespace):
             print(f"Results already exist at {indep_out_path}, skipping...")
         else:
             llm = OpenAICompatLLM(
-                model_name=args.model_name,
-                base_url=args.base_url,
-                system_prompt=system_prompt,
+                **llm_common_kwargs,
                 temperature=args.temperature,
                 max_tokens=32 + (1024 if args.manual_reasoning else 0),
             )
@@ -95,9 +100,7 @@ def main(args: argparse.Namespace):
             print(f"Results already exist at {batch_out_path}, skipping...")
         else:
             llm = OpenAICompatLLM(
-                model_name=args.model_name,
-                base_url=args.base_url,
-                system_prompt=system_prompt,
+                **llm_common_kwargs,
                 temperature=args.temperature,
                 max_tokens=args.n_samples_per_chain * 32 + (1024 if args.manual_reasoning else 0),
             )
@@ -136,9 +139,7 @@ def main(args: argparse.Namespace):
         else:
             gibbs_n_samples = args.n_samples // args.gibbs_k_vars
             llm = OpenAICompatLLM(
-                model_name=args.model_name,
-                base_url=args.base_url,
-                system_prompt=system_prompt,
+                **llm_common_kwargs,
                 temperature=args.temperature,
                 max_tokens=args.gibbs_k_vars * 32 + (1024 if args.manual_reasoning else 0),
             )
@@ -189,9 +190,7 @@ def main(args: argparse.Namespace):
         else:
             gibbs_n_samples = args.n_samples // args.gibbs_k_vars
             llm = OpenAICompatLLM(
-                model_name=args.model_name,
-                base_url=args.base_url,
-                system_prompt=system_prompt,
+                **llm_common_kwargs,
                 temperature=1.0,
                 max_tokens=32 + (1024 if args.manual_reasoning else 0),
             )
@@ -238,9 +237,7 @@ def main(args: argparse.Namespace):
         else:
             gibbs_n_samples = args.n_samples // args.gibbs_k_vars
             llm = OpenAICompatLLM(
-                model_name=args.model_name,
-                base_url=args.base_url,
-                system_prompt=system_prompt,
+                **llm_common_kwargs,
                 temperature=0.0 if not args.manual_reasoning else 1.0,
                 max_tokens=32 + (1024 if args.manual_reasoning else 0),
             )
