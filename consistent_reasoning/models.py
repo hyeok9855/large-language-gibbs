@@ -112,13 +112,13 @@ class OpenAICompatLLM:
                 else:
                     content = data["choices"][0]["text"]
 
-                if content == " Fals":
+                if content in [" F", " Fa", " Fal", " Fals"]:
                     content = " False"
-                if content == "Fals":
+                if content in ["F", "Fa", "Fal", "Fals"]:
                     content = "False"
-                if content in [" Tr", " Tru"]:
+                if content in [" T", " Tr", " Tru"]:
                     content = " True"
-                if content in ["Tr", "Tru"]:
+                if content in ["T", "Tr", "Tru"]:
                     content = "True"
 
                 if content not in schema:

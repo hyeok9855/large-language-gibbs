@@ -780,45 +780,16 @@ if __name__ == "__main__":
         choices=["icm", "gibbs", "zeroshot", "npass", "barker_gibbs", "gambling_gibbs"],
         default="icm",
     )
-    parser.add_argument(
-        "--testbed",
-        choices=["alpaca", "gsm8k", "truthfulQA", "truthfulQA-preference"],
-        required=True,
-    )
+    parser.add_argument("--testbed", choices=["alpaca", "gsm8k", "truthfulQA"], required=True)
 
     parser.add_argument("--n_partitions", type=int, default=5)
     parser.add_argument("--partition_base_seed", type=int, default=42)
     parser.add_argument(
-        "--system_prompt", type=str, default=None, help="System prompt for instruction-tuned models"
+        "--system_prompt",
+        type=str,
+        default=None,
+        help="System prompt for instruction-tuned models, if None, a default prompt will be used",
     )
-
-    parser.add_argument(
-        "--chunk_size_cis",
-        type=int,
-        default=16,
-        help="(icm/gibbs) Number of consistency_ids per chunk.",
-    )
-
-    # Algorithm hyperparams (ICM)
-    parser.add_argument("--K", type=int, default=1000)
-    parser.add_argument("--alpha", type=float, default=30)
-    parser.add_argument("--num_seed", type=int, default=8)
-    parser.add_argument("--decay", type=float, default=0.99)
-    parser.add_argument("--initial_T", type=float, default=10)
-    parser.add_argument("--final_T", type=float, default=0.1)
-    parser.add_argument("--scheduler", type=str, default="log")
-
-    # Algorithm hyperparams (Gibbs)
-    parser.add_argument("--temperature", type=float, default=1.0)
-    parser.add_argument("--num_samples", type=int, default=25)
-    parser.add_argument("--burn_in", type=int, default=None)
-    parser.add_argument("--thinning", type=int, default=None)
-    parser.add_argument("--no_sweep", dest="sweep", action="store_false")
-    parser.add_argument("--manual_reasoning", action="store_true")
-
-    # Algorithm hyperparams (NPass)
-    parser.add_argument("--n_passes", type=int, default=4)
-    parser.add_argument("--all_pass", action="store_true")
 
     # Model
     parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-8B")
@@ -831,6 +802,40 @@ if __name__ == "__main__":
         "--only_partition", type=int, default=None, help="If set, run only this partition index."
     )
     parser.add_argument("--num_workers", type=int, default=1)
+
+    # Algorithm hyperparams
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="(zeroshot/npass/gibbs) Temperature for the model.",
+    )
+    parser.add_argument(
+        "--chunk_size_cis",
+        type=int,
+        default=16,
+        help="(icm/gibbs) Number of consistency_ids per chunk.",
+    )
+
+    ## ICM
+    parser.add_argument("--K", type=int, default=1000)
+    parser.add_argument("--alpha", type=float, default=30)
+    parser.add_argument("--num_seed", type=int, default=8)
+    parser.add_argument("--decay", type=float, default=0.99)
+    parser.add_argument("--initial_T", type=float, default=10)
+    parser.add_argument("--final_T", type=float, default=0.1)
+    parser.add_argument("--scheduler", type=str, default="log")
+
+    ## Gibbs
+    parser.add_argument("--num_samples", type=int, default=25)
+    parser.add_argument("--burn_in", type=int, default=None)
+    parser.add_argument("--thinning", type=int, default=None)
+    parser.add_argument("--no_sweep", dest="sweep", action="store_false")
+    parser.add_argument("--manual_reasoning", action="store_true")
+
+    ## NPass
+    parser.add_argument("--n_passes", type=int, default=4)
+    parser.add_argument("--all_pass", action="store_true")
 
     args = parser.parse_args()
 

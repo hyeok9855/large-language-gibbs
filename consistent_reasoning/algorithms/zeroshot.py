@@ -33,10 +33,9 @@ def run_zeroshot_search(
         print(f"[zeroshot]: N={len(whole_ids)} items (T={llm.temperature})")
 
     parallel = getattr(args, "num_workers", 1) > 1
-    pbar = tqdm(total=len(whole_ids), desc="zeroshot", disable=parallel)
 
     final_demos = deepcopy(demonstrations)
-    for uid in pbar:
+    for uid in tqdm(whole_ids, desc="zeroshot", disable=parallel):
         example = final_demos[uid]
         prompt = cast(str, get_judge_prompt_fewshot(example, [], pipeline=False))
         if prompt.endswith(" "):
