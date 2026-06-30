@@ -76,7 +76,7 @@ NUMBER_PATTERN = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
 
 def parse_parameter_dir(target, dirname):
     if target == "uniform":
-        match = re.fullmatch(r"min(\d+)_max(\d+)", dirname)
+        match = re.fullmatch(r"min(-?\d+)_max(-?\d+)", dirname)
         if match:
             minnum = int(match.group(1))
             maxnum = int(match.group(2))
