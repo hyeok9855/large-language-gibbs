@@ -42,7 +42,7 @@ uv run python sampling/run.py \
   --target gaussian \
   --model_name meta-llama/Llama-3.1-8B \
   --port 8000 \
-  --seed 0
+  --seed 0 \
   --methods gibbs
 ```
 
