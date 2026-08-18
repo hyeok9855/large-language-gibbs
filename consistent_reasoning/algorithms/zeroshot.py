@@ -32,7 +32,7 @@ def run_zeroshot_search(
     if verbose:
         print(f"[zeroshot]: N={len(whole_ids)} items (T={llm.temperature})")
 
-    parallel = getattr(args, "num_workers", 1) > 1
+    parallel = args.num_workers > 1
 
     final_demos = deepcopy(demonstrations)
     for uid in tqdm(whole_ids, desc="zeroshot", disable=parallel):

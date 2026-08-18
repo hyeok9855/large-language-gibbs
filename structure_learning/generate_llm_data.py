@@ -51,6 +51,7 @@ def main(args: Namespace) -> None:
         temperature=args.temperature,
         top_p=args.top_p,
         n_samples=args.n_samples,
+        n_chains=args.n_chains,
         seed=args.seed,
         burn_in=args.burn_in,
         thinning=args.thinning,
@@ -63,7 +64,7 @@ def main(args: Namespace) -> None:
         print(f"Skipping: {output_path} already exists")
         return
 
-    schema = build_schema(meta)
+    full_schema = build_schema(meta)
     system_prompt = "" if args.model_type == "base" else build_system_prompt(meta)
 
     llm = OpenAICompatLLM(
@@ -91,7 +92,10 @@ def main(args: Namespace) -> None:
                 if observed:
                     observed_str = json.dumps(observed)
                     if args.model_type == "base":
-                        return f"{dataset_description}\n{feature_description}\n[Data point] {observed_str}"
+                        return (
+                            f"{dataset_description}\n{feature_description}\n"
+                            f"[Data point] {observed_str}"
+                        )
                     else:
                         required_str = '"' + '", "'.join(variables_to_resample) + '"'
                         return (
@@ -114,11 +118,11 @@ def main(args: Namespace) -> None:
                 template=llm_template,
                 manual_reasoning=args.manual_reasoning,
             )
+
             if args.manual_reasoning:
                 llm_prior.reasoning_prompt = llm_prior.reasoning_prompt.replace(
                     "step-by-step", "brief"
                 )
-
             if args.sampling_method == "direct":
                 prior = llm_prior
             else:  # gibbs
@@ -141,22 +145,23 @@ def main(args: Namespace) -> None:
                 observed: dict[str, Any] | None = None,
             ) -> str:
                 observed = observed or {}
+                variables_to_resample = list(option1.keys())
                 dataset_description = get_dataset_description(meta)
                 feature_description = get_feature_description(
-                    meta, list(observed.keys()), list(option1.keys())
+                    meta, list(observed.keys()), variables_to_resample
                 )
                 template = f"{dataset_description}\n{feature_description}\n"
                 if observed:
                     observed_str = json.dumps(observed)
+                    required_str = '"' + '", "'.join(variables_to_resample) + '"'
                     template = template + (
                         f"Given the observed features with these values: {observed_str}, "
-                        f"which of the following two options is more likely to be a valid "
-                        "data point? "
+                        f"which of the following two options is more likely to be valid "
+                        f"for the remaining features ({required_str})? "
                     )
                 else:
                     template = template + (
-                        "Which of the following two options is more likely to be a valid "
-                        "data point? "
+                        "Which of the following two options is more likely to be a valid data point? "
                     )
                 option1_str = json.dumps(option1)
                 option2_str = json.dumps(option2)
@@ -190,29 +195,29 @@ def main(args: Namespace) -> None:
                 observed: dict[str, Any] | None = None,
             ) -> str:
                 observed = observed or {}
+                variables_to_resample = list(option1.keys())
                 dataset_description = get_dataset_description(meta)
                 feature_description = get_feature_description(
-                    meta, list(observed.keys()), list(option1.keys())
+                    meta, list(observed.keys()), variables_to_resample
                 )
                 template = f"{dataset_description}\n{feature_description}\n"
                 if observed:
                     observed_str = json.dumps(observed)
+                    required_str = '"' + '", "'.join(variables_to_resample) + '"'
                     template = template + (
-                        "You will be presented with two sets of feature values for a data point, "
-                        f"along with some observed features with these values: {observed_str}. "
+                        f"You have already observed features with these values: {observed_str}, "
+                        f"and here are two options for the remaining features ({required_str}): "
                     )
                 else:
-                    template = template + (
-                        "You will be presented with two sets of feature values for a data point. "
-                    )
+                    template = template + "Here are two options for a data point: "
                 option1_str = json.dumps(option1)
                 option2_str = json.dumps(option2)
                 output_schema_str = json.dumps(output_schema)
                 return template + (
-                    "One of the following two options is real and the other is fake. You have the "
-                    f"opportunity to place a bet of ${bet_value} that Option 1 is more plausible, "
-                    "which will pay out $100 if you are correct. Your aim is to maximise profit. "
-                    f"Option 1 is {option1_str} and Option 2 is {option2_str}. "
+                    f"Option 1: {option1_str}. Option 2: {option2_str}. "
+                    "One of the two options is real and the other is fake. You can place a "
+                    f"bet of ${bet_value} that Option 1 is real, which will pay out $100 if you "
+                    "are correct. Your aim is to maximise profit. Would you place a bet or not? "
                     f"Respond with JSON that follows this schema: {output_schema_str}."
                 )
 
@@ -237,7 +242,7 @@ def main(args: Namespace) -> None:
     )
     samples_per_chain = prior.sample_parallel(
         n_samples_per_chain,
-        [deepcopy(schema) for _ in range(args.n_chains)],
+        [deepcopy(full_schema) for _ in range(args.n_chains)],
         verbose=args.verbose,
         pbar=args.pbar,
     )

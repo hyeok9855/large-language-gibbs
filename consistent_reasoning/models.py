@@ -1,10 +1,11 @@
-import os
-import requests
-import threading
-import time
 import asyncio
 import logging
-from typing import Any, Union, List, Dict
+import os
+import threading
+import time
+from typing import Any, Dict, List, Union
+
+import requests
 
 logger = logging.getLogger(__name__)
 _thread_local = threading.local()
@@ -47,6 +48,8 @@ class OpenAICompatLLM:
         session = getattr(_thread_local, "openai_compat_session", None)
         if session is None:
             session = requests.Session()
+            # Bypass cluster HTTP proxies for local vLLM (Squid cannot reach localhost)
+            session.trust_env = False
             _thread_local.openai_compat_session = session
         return session
 
@@ -231,6 +234,8 @@ class ModelAPI:
         session = getattr(_thread_local, "openai_compat_session", None)
         if session is None:
             session = requests.Session()
+            # Bypass cluster HTTP proxies for local vLLM (Squid cannot reach localhost)
+            session.trust_env = False
             _thread_local.openai_compat_session = session
         return session
 

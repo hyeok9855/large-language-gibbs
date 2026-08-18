@@ -245,8 +245,8 @@ def run_gambling_gibbs_search(
 ) -> tuple[dict[int, dict[str, Any]], dict[str, Any]]:
     schema = build_schema(whole_ids)
 
-    sweep = bool(getattr(args, "sweep", False))
-    parallel = getattr(args, "num_workers", 1) > 1
+    sweep = bool(args.sweep)
+    parallel = args.num_workers > 1
     if not parallel:
         print(
             f"[gambling_gibbs]: full-batch Gambling Gibbs over N={len(whole_ids)} "

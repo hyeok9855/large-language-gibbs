@@ -244,10 +244,8 @@ def run_gibbs_search(
     *,
     verbose: bool = False,
 ) -> tuple[dict[int, dict[str, Any]], dict[str, Any]]:
-    schema = build_schema(whole_ids)
-
-    sweep = bool(getattr(args, "sweep", False))
-    parallel = getattr(args, "num_workers", 1) > 1
+    sweep = bool(args.sweep)
+    parallel = args.num_workers > 1
     if not parallel:
         print(
             f"[gibbs]: full-batch Gibbs over N={len(whole_ids)} "
@@ -295,9 +293,9 @@ def run_gibbs_search(
     )
     samples = gibbs.sample(
         n_samples=args.num_samples,
-        schema=schema,
+        schema=build_schema(whole_ids),
         verbose=False,
-        pbar=None if parallel else True,
+        pbar=not parallel,
     )
 
     sample_keys = list(samples[0].keys())

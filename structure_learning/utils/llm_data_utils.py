@@ -4,6 +4,7 @@ def get_llm_data_run_name(
     temperature: float,
     top_p: float,
     n_samples: int,
+    n_chains: int,
     seed: int,
     burn_in: int | None = None,
     thinning: int | None = None,
@@ -20,4 +21,4 @@ def get_llm_data_run_name(
             run_name += "_sweep"
     if manual_reasoning:
         run_name += "_reasoning"
-    return f"{run_name}_n{n_samples}_sd{seed}"
+    return f"{run_name}_nc{n_chains}_n{n_samples}_sd{seed}"

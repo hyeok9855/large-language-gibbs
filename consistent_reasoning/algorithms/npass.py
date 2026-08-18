@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import itertools
 import json
 import random
 from collections import Counter, defaultdict
@@ -16,18 +15,25 @@ from consistent_reasoning.models import OpenAICompatLLM
 from consistent_reasoning.prompt_utils import get_judge_prompt_fewshot
 
 
-def _enumerate_permutations(uids: list[int], all_pass: bool, n_passes: int) -> list[list[int]]:
-    if all_pass:
-        assert len(uids) <= 5, "All-pass mode is only supported for groups of size <= 5."
-        all_perms = [list(p) for p in itertools.permutations(uids)]
-        random.shuffle(all_perms)
-        return all_perms
+def _enumerate_permutations(
+    cid_to_uids: dict[Any, list[int]], n_passes: int, fixed_order: bool = False
+) -> list[list[int]]:
+    if fixed_order:
+        # Every pass uses the chunk's original item order; variation across
+        # passes then comes only from label sampling at T > 0.
+        perm = [uid for uids in cid_to_uids.values() for uid in uids]
+        return [list(perm) for _ in range(n_passes)]
 
-    # If not all-pass, sample n_passes permutations with replacement.
+    # Sample n_passes block-preserving permutations with replacement.
     perms: list[list[int]] = []
     while len(perms) < n_passes:
-        perm = list(uids)
-        random.shuffle(perm)
+        cids = list(cid_to_uids.keys())
+        random.shuffle(cids)
+        perm: list[int] = []
+        for cid in cids:
+            members = list(cid_to_uids[cid])
+            random.shuffle(members)
+            perm.extend(members)
         perms.append(perm)
     return perms
 
@@ -42,13 +48,12 @@ def run_npass_search(
     verbose: bool = False,
 ) -> tuple[dict[int, dict[str, Any]], dict[str, Any]]:
     label_choices: list[str] = ["True", "False"] if args.instruction_tuned else [" True", " False"]
-    all_pass = bool(args.all_pass)
-    n_passes = int(args.n_passes)  # When all_pass=True, n_passes is ignored.
+    n_passes = int(args.n_passes)
 
     cid_to_uids: dict[Any, list[int]] = defaultdict(list)
     for uid in whole_ids:
-        cid = demonstrations[uid]["consistency_id"]
-        cid_to_uids[cid].append(uid)
+        cid_to_uids[demonstrations[uid]["consistency_id"]].append(uid)
+    n_cids = len(cid_to_uids)
 
     if log_path is not None:
         log_path = Path(log_path)
@@ -56,58 +61,55 @@ def run_npass_search(
 
     if verbose:
         print(
-            f"[npass]: {len(cid_to_uids)} consistency groups "
-            f"({'all_pass' if all_pass else f'n_passes={n_passes}'}, T={llm.temperature})"
+            f"[npass]: pool of {len(whole_ids)} items across {n_cids} consistency "
+            f"group(s) (n_passes={n_passes}, fixed_order={args.fixed_order}, T={llm.temperature})"
         )
 
     true_counts: dict[int, int] = {uid: 0 for uid in whole_ids}
     pred_counts: dict[int, int] = {uid: 0 for uid in whole_ids}
 
-    parallel = getattr(args, "num_workers", 1) > 1
-    for cid, uids in tqdm(cid_to_uids.items(), desc="npass", disable=parallel):
-        permutations = _enumerate_permutations(uids, all_pass, n_passes)
-        for perm_idx, perm in enumerate(permutations):
-            history: list[dict[str, Any]] = []
-            for position, uid in enumerate(perm):
-                example = demonstrations[uid]
-                if args.instruction_tuned:
-                    prompt = example["prompt"]
-                    chosen = llm.generate(
-                        prompt, schema=label_choices, verbose=False, history=history
-                    )
-                else:
-                    prompt = cast(str, get_judge_prompt_fewshot(example, history, pipeline=False))
-                    chosen = llm.generate(prompt, schema=label_choices, verbose=False)
-                if not isinstance(chosen, str):
-                    raise TypeError(
-                        f"Expected a string from choice-constrained generation; got {type(chosen)}"
-                    )
-                value = chosen.strip().capitalize() == "True"
+    parallel = args.num_workers > 1
+    permutations = _enumerate_permutations(cid_to_uids, n_passes, args.fixed_order)
+    for perm_idx, perm in enumerate(tqdm(permutations, desc="npass", disable=parallel)):
+        history: list[dict[str, Any]] = []
+        for position, uid in enumerate(perm):
+            example = demonstrations[uid]
+            cid = example["consistency_id"]
+            if args.instruction_tuned:
+                prompt = example["prompt"]
+                chosen = llm.generate(prompt, schema=label_choices, verbose=False, history=history)
+            else:
+                prompt = cast(str, get_judge_prompt_fewshot(example, history, pipeline=False))
+                chosen = llm.generate(prompt, schema=label_choices, verbose=False)
+            if not isinstance(chosen, str):
+                raise TypeError(
+                    f"Expected a string from choice-constrained generation; got {type(chosen)}"
+                )
+            value = chosen.strip().capitalize() == "True"
 
-                true_counts[uid] += int(value)
-                pred_counts[uid] += 1
+            true_counts[uid] += int(value)
+            pred_counts[uid] += 1
 
-                history_item = deepcopy(example)
-                history_item["label"] = int(value)
-                history.append(history_item)
+            history_item = deepcopy(example)
+            history_item["label"] = int(value)
+            history.append(history_item)
 
-                if log_path is not None:
-                    log_record = {
-                        "consistency_id": cid,
-                        "perm_index": int(perm_idx),
-                        "position": int(position),
-                        "uid": int(uid),
-                        "chosen": chosen,
-                        "label": int(value),
-                    }
-                    with open(log_path, "a") as f:
-                        f.write(json.dumps(log_record, default=str) + "\n")
+            if log_path is not None:
+                log_record = {
+                    "consistency_id": cid,
+                    "perm_index": int(perm_idx),
+                    "position": int(position),
+                    "uid": int(uid),
+                    "chosen": chosen,
+                    "label": int(value),
+                }
+                with open(log_path, "a") as f:
+                    f.write(json.dumps(log_record, default=str) + "\n")
 
-                if verbose:
-                    print(
-                        f"[npass] cid={cid} perm={perm_idx} pos={position} "
-                        f"uid={uid} -> {bool(value)}"
-                    )
+            if verbose:
+                print(
+                    f"[npass] perm={perm_idx} pos={position} cid={cid} uid={uid} -> {bool(value)}"
+                )
 
     final_demos = deepcopy(demonstrations)
     n_ties = 0

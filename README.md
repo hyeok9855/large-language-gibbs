@@ -48,7 +48,7 @@ uv run python sampling/run.py \
 
 Existing result files are not overwritten; matching runs are skipped.
 
-`run_parallel.sh` launches experiments for multiple methods and seeds in parallel: independent and batch sampling, Gibbs with block sizes 1 and 4, and Barker/Gambling variants (only when using an instruct model). For example (5 seeds):
+`run_parallel.sh` launches experiments for multiple methods and seeds in parallel: independent, batch, direct, Gibbs with block sizes 1 and 4, and Barker/Gambling variants (only when using an instruct model). For example (5 seeds):
 ```bash
 bash sampling/run_parallel.sh gaussian meta-llama/Llama-3.1-8B 8000 5
 ```
@@ -78,15 +78,8 @@ You should have access to an OpenAI-compatible API for pretrained base models th
 
 We recommend deploying models using [vLLM](https://github.com/vllm-project/vllm). For example, to host `meta-llama/Llama-3.1-8B` locally:
 ```bash
-vllm serve meta-llama/Llama-3.1-8B --port 8000 --max-num-seqs 32
+vllm serve meta-llama/Llama-3.1-8B --port 8000 --enable-prefix-caching --max-model-len 16384 --max-num-seqs 128
 ```
-
-- **Port & URL Configuration**:
-  - The Gibbs sampling, Zero-shot, N-Pass, Barker, and Gambling algorithms pass the `--port` argument to query `http://localhost:<port>/v1`.
-  - The ICM algorithm queries via `ModelAPI` which checks the `LLAMA_API_BASE` environment variable (defaulting to `http://localhost:8000/v1`). If you are running the API on a custom port, make sure to set the environment variable:
-    ```bash
-    export LLAMA_API_BASE=http://localhost:<your_port>/v1
-    ```
 
 ### Data Preparation
 
@@ -112,20 +105,17 @@ uv run python consistent_reasoning/run_eval.py \
 #### Key Arguments
 
 - `--algorithm`: The elicitation algorithm to evaluate. Choices are:
-  - `zeroshot`: Standard zero-shot base baseline.
-  - `npass`: N-pass sequential voting baseline (default `--n_passes 4`).
-  - `gibbs`: Joint Gibbs sampling MCMC search.
-  - `barker_gibbs`: Barker Gibbs MCMC variant.
-  - `gambling_gibbs`: Gambling Gibbs MCMC variant (supports step-by-step reasoning with `--manual_reasoning` for instruct models).
-  - `icm`: Iterated Conditional Modes (ICM) simulated annealing search.
+  - `zeroshot`: Zero-shot with no context.
+  - `npass`: N-pass autoregressive generation in random order.
+  - `gibbs`: Gibbs sampling.
+  - `barker_gibbs`: Barker Gibbs sampling.
+  - `gambling_gibbs`: Gambling Gibbs sampling.
+  - `icm`: Iterated Conditional Modes (ICM; [Wen et al., 2025](https://arxiv.org/abs/2506.10139)) simulated annealing search.
 - `--testbed`: Dataset name (`truthfulQA`, `gsm8k`, `alpaca`).
 - `--model`: Model name registered on the server (e.g., `meta-llama/Llama-3.1-8B`).
-- `--port`: The local port of the OpenAI-compatible vLLM server (default `8000`).
 - `--n_partitions`: Number of random evaluation partitions to run (default `5`).
 - `--num_workers`: Number of chunks/partitions to execute concurrently (default `1`).
-- `--chunk_size_cis`: Size of dataset chunks for partition evaluation (default `16`).
-
-The evaluation driver automatically caches intermediate queries and results in `--output_dir` (defaults to `results/<testbed>/<algorithm>_...`). Existing results will not be rerun.
+- `--chunk_size_cis`: Size of dataset chunks for partition evaluation (for `npass`, `gibbs` and its variants, and `icm`; default `16`).
 
 ## Experiment3: Bayesian structure learning (§5.2)
 
@@ -175,14 +165,14 @@ uv run python structure_learning/generate_llm_data.py \
   --sampling_method gibbs \
   --temperature 1.0 \
   --n_samples 200 \
-  --n_chains 5 \
+  --n_chains 10 \
   --block_size 1 \
   --seed 0
 ```
 
 The samples are written to `structure_learning/datasets/<dataset_name>/llm_data/`. Existing files are not overwritten; matching runs are skipped.
 
-`generate_llm_data_parallel.sh` launches generation jobs for multiple datasets, sampling methods, and seeds in parallel. The arguments are: datasets, sampling methods, model name, port, `manual_reasoning` (default `false`), and number of seeds (default `3`). For example (3 seeds):
+`generate_llm_data_parallel.sh` launches generation jobs for multiple datasets, sampling methods, and seeds in parallel. The arguments are: datasets, sampling methods, model name, port, `manual_reasoning` (default `false`), and number of seeds (default `3`). Per-dataset block sizes are set inside the script and must match `DATASET_PARAMS` in `train_dag_gflownet.py`. For example (3 seeds):
 
 ```bash
 bash structure_learning/generate_llm_data_parallel.sh \

@@ -72,6 +72,7 @@ def build_data_path(
         temperature=temp,
         top_p=1.0,
         n_samples=200,
+        n_chains=10,
         seed=seed,
         burn_in=params["burnin"],
         thinning=params["thinning"],

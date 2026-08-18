@@ -88,7 +88,7 @@ ZEROSHOT_CACHE_KEY_FIELDS = (
 NPASS_CACHE_KEY_FIELDS = (
     "temperature",
     "n_passes",
-    "all_pass",
+    "fixed_order",
     "model",
     "instruction_tuned",
     "system_prompt",
@@ -111,7 +111,7 @@ def relevant_args_snapshot(args: argparse.Namespace) -> dict[str, Any]:
     except KeyError as e:
         raise ValueError(f"Unsupported algorithm: {args.algorithm}") from e
     snapshot = {f: getattr(args, f) for f in fields}
-    if args.algorithm not in ("zeroshot", "npass"):
+    if args.algorithm != "zeroshot":
         snapshot["chunk_size_cis"] = args.chunk_size_cis
     snapshot["algorithm"] = args.algorithm
     return snapshot
@@ -184,6 +184,7 @@ def run_icm_chunk(
     log_path = cache_path.with_suffix(".log.jsonl")
     log_path.unlink(missing_ok=True)
 
+    parallel = args.num_workers > 1
     t0 = time.time()
     final_demos, final_metric = run_icm_search(
         demonstrations,
@@ -192,6 +193,7 @@ def run_icm_chunk(
         model_api,
         pipeline_name=pipeline_name,
         log_path=log_path,
+        verbose=not parallel,
     )
     duration = time.time() - t0
 
@@ -362,7 +364,7 @@ def _run_label_predict_chunk(
 
 def run_gibbs_chunk(**kwargs: Any) -> dict[str, Any]:
     args = kwargs["args"]
-    parallel = getattr(args, "num_workers", 1) > 1
+    parallel = args.num_workers > 1
     return _run_label_predict_chunk(
         search_fn=run_gibbs_search,
         verbose=not parallel,
@@ -372,7 +374,7 @@ def run_gibbs_chunk(**kwargs: Any) -> dict[str, Any]:
 
 def run_barker_gibbs_chunk(**kwargs: Any) -> dict[str, Any]:
     args = kwargs["args"]
-    parallel = getattr(args, "num_workers", 1) > 1
+    parallel = args.num_workers > 1
     return _run_label_predict_chunk(
         search_fn=run_barker_gibbs_search,
         verbose=not parallel,
@@ -382,7 +384,7 @@ def run_barker_gibbs_chunk(**kwargs: Any) -> dict[str, Any]:
 
 def run_gambling_gibbs_chunk(**kwargs: Any) -> dict[str, Any]:
     args = kwargs["args"]
-    parallel = getattr(args, "num_workers", 1) > 1
+    parallel = args.num_workers > 1
     return _run_label_predict_chunk(
         search_fn=run_gambling_gibbs_search,
         verbose=not parallel,
@@ -392,13 +394,13 @@ def run_gambling_gibbs_chunk(**kwargs: Any) -> dict[str, Any]:
 
 def run_zeroshot_chunk(**kwargs: Any) -> dict[str, Any]:
     args = kwargs["args"]
-    parallel = getattr(args, "num_workers", 1) > 1
+    parallel = args.num_workers > 1
     return _run_label_predict_chunk(search_fn=run_zeroshot_search, verbose=not parallel, **kwargs)
 
 
 def run_npass_chunk(**kwargs: Any) -> dict[str, Any]:
     args = kwargs["args"]
-    parallel = getattr(args, "num_workers", 1) > 1
+    parallel = args.num_workers > 1
     return _run_label_predict_chunk(search_fn=run_npass_search, verbose=not parallel, **kwargs)
 
 
@@ -486,10 +488,16 @@ def _summarize_partition(records: list[dict[str, Any]]) -> dict[str, Any]:
             n_predicted += 1
             if p["predicted_label"] == p["vanilla_label"]:
                 n_correct += 1
+
+    if n_predicted == 0:
+        raise RuntimeError("No predictions made for this partition")
+
+    chunk_durations = [float(r["duration_seconds"]) for r in records]
     return {
         "n_predicted": n_predicted,
         "n_missing": n_missing,
-        "accuracy": float(n_correct / n_predicted) if n_predicted else None,
+        "accuracy": float(n_correct / n_predicted),
+        "mean_duration_seconds": float(np.mean(chunk_durations)),
     }
 
 
@@ -525,18 +533,19 @@ def aggregate_run(
         per_partition_records.append(p_records)
 
     per_partition_summaries = [_summarize_partition(prs) for prs in per_partition_records]
-    accs = [s["accuracy"] for s in per_partition_summaries if s["accuracy"] is not None]
+    accs = [s["accuracy"] for s in per_partition_summaries]
+    chunk_durations = [s["mean_duration_seconds"] for s in per_partition_summaries]
     n_predicted_total = sum(s["n_predicted"] for s in per_partition_summaries)
     n_missing_total = sum(s["n_missing"] for s in per_partition_summaries)
     headline = {
         "n_partitions": len(accs),
         "n_predicted_total": n_predicted_total,
         "n_missing_total": n_missing_total,
-        "mean_accuracy": float(np.mean(accs)) if accs else None,
-        "std_accuracy": float(np.std(accs)) if accs else None,
-        "se_accuracy": float(np.std(accs, ddof=1) / np.sqrt(len(accs))) if len(accs) > 1 else None,
-        "min_accuracy": float(np.min(accs)) if accs else None,
-        "max_accuracy": float(np.max(accs)) if accs else None,
+        "mean_accuracy": float(np.mean(accs)),
+        "std_accuracy": float(np.std(accs)) if len(accs) > 1 else None,
+        "min_accuracy": float(np.min(accs)),
+        "max_accuracy": float(np.max(accs)),
+        "mean_duration_seconds": float(np.mean(chunk_durations)),
     }
 
     per_item_correct_count: dict[int, int] = {}
@@ -576,6 +585,9 @@ def aggregate_run(
         },
         "headline": headline,
         "per_partition_accuracy": [s["accuracy"] for s in per_partition_summaries],
+        "per_partition_duration_seconds": [
+            s["mean_duration_seconds"] for s in per_partition_summaries
+        ],
         "per_partition_summary": per_partition_summaries,
         "per_item_correct_count_distribution": {
             str(k): correct_count_dist.get(k, 0) for k in range(n_partitions + 1)
@@ -593,10 +605,11 @@ def aggregate_run(
 
     print(
         f"headline: mean={_fmt(headline['mean_accuracy'])} "
-        f"+/- {_fmt(headline['se_accuracy'])} (SE) "
+        f"+/- {_fmt(headline['std_accuracy'])} "
         f"over {headline['n_partitions']} partitions, "
         f"min={_fmt(headline['min_accuracy'])}, max={_fmt(headline['max_accuracy'])}"
     )
+    print(f"runtime: mean={_fmt(headline['mean_duration_seconds'])}s")
     print(
         f"per-item correct-count dist (out of {n_partitions}): "
         f"{summary['per_item_correct_count_distribution']}"
@@ -796,15 +809,17 @@ def main(args: argparse.Namespace) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
 
-    parser.add_argument(
-        "--algorithm",
-        choices=["icm", "gibbs", "zeroshot", "npass", "barker_gibbs", "gambling_gibbs"],
-        default="icm",
-    )
-    parser.add_argument("--testbed", choices=["alpaca", "gsm8k", "truthfulQA"], required=True)
-
+    parser.add_argument("--testbed", choices=["truthfulQA", "gsm8k", "alpaca"], required=True)
     parser.add_argument("--n_partitions", type=int, default=5)
     parser.add_argument("--partition_base_seed", type=int, default=42)
+    parser.add_argument(
+        "--only_partition", type=int, default=None, help="If set, run only this partition index."
+    )
+    parser.add_argument("--num_workers", type=int, default=1)
+
+    # Model
+    parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-8B")
+    parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
         "--system_prompt",
         type=str,
@@ -812,19 +827,16 @@ if __name__ == "__main__":
         help="System prompt for instruction-tuned models, if None, a default prompt will be used",
     )
 
-    # Model
-    parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-8B")
-    parser.add_argument("--port", type=int, default=8000)
-
-    # Output / control
+    # Output
     parser.add_argument("--output_dir", type=Path, default=None)
     parser.add_argument("--exp_name", type=str, default=None)
-    parser.add_argument(
-        "--only_partition", type=int, default=None, help="If set, run only this partition index."
-    )
-    parser.add_argument("--num_workers", type=int, default=1)
 
     # Algorithm hyperparams
+    parser.add_argument(
+        "--algorithm",
+        choices=["icm", "gibbs", "zeroshot", "npass", "barker_gibbs", "gambling_gibbs"],
+        required=True,
+    )
     parser.add_argument(
         "--temperature",
         type=float,
@@ -835,7 +847,7 @@ if __name__ == "__main__":
         "--chunk_size_cis",
         type=int,
         default=16,
-        help="(icm/gibbs) Number of consistency_ids per chunk.",
+        help="(npass/icm/gibbs) Number of consistency_ids pooled per chunk.",
     )
 
     ## ICM
@@ -856,7 +868,12 @@ if __name__ == "__main__":
 
     ## NPass
     parser.add_argument("--n_passes", type=int, default=4)
-    parser.add_argument("--all_pass", action="store_true")
+    parser.add_argument(
+        "--fixed_order",
+        action="store_true",
+        help="(npass) Use the chunk's original item order on every pass instead of "
+        "shuffling, i.e. pure autoregressive (ancestral) sampling under one order.",
+    )
 
     args = parser.parse_args()
 
@@ -873,7 +890,7 @@ if __name__ == "__main__":
             "answers a question: True if the claim is correct, False if not."
         )
 
-    if args.algorithm in ("zeroshot", "npass") and args.chunk_size_cis != 1:
+    if args.algorithm == "zeroshot" and args.chunk_size_cis != 1:
         print(f"[run_eval] {args.algorithm} ignores chunk_size_cis; forcing chunk_size_cis=1.")
         args.chunk_size_cis = 1
 
@@ -914,10 +931,11 @@ if __name__ == "__main__":
         if args.algorithm == "zeroshot":
             return f"zeroshot_{model_short}_T{args.temperature}_baseseed{args.partition_base_seed}"
         if args.algorithm == "npass":
-            n_str = "Nall" if args.all_pass else f"N{args.n_passes}"
+            order = "_fixedorder" if args.fixed_order else ""
             return (
                 f"npass_{model_short}"
-                f"_T{args.temperature}_{n_str}"
+                f"_T{args.temperature}_N{args.n_passes}{order}"
+                f"_cs{args.chunk_size_cis}"
                 f"_baseseed{args.partition_base_seed}"
             )
         raise ValueError(f"Unsupported algorithm: {args.algorithm}")

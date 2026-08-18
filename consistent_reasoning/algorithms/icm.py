@@ -212,6 +212,7 @@ def run_icm_search(
     log_path,
     *,
     pipeline_name,
+    verbose=False,
 ):
     cur_metric = {
         "train_prob": -1e6,
@@ -220,18 +221,19 @@ def run_icm_search(
         "train_label_distribution": {"0": 0, "1": 0},
     }
 
-    print(
-        "init random labels = ",
-        Counter([i["label"] for i in demonstrations.values() if i["type"] == "seed"]),
-        "init label acc = ",
-        np.mean(
-            [
-                i["label"] == i["vanilla_label"]
-                for i in demonstrations.values()
-                if i["type"] == "seed"
-            ]
-        ),
-    )
+    if verbose:
+        print(
+            "init random labels = ",
+            Counter([i["label"] for i in demonstrations.values() if i["type"] == "seed"]),
+            "init label acc = ",
+            np.mean(
+                [
+                    i["label"] == i["vanilla_label"]
+                    for i in demonstrations.values()
+                    if i["type"] == "seed"
+                ]
+            ),
+        )
 
     instruction_tuned = bool(getattr(args, "instruction_tuned", False))
     system_prompt = getattr(args, "system_prompt", "")
@@ -240,7 +242,7 @@ def run_icm_search(
     flip_cnt = 0
     example_id = 0
 
-    for _ in tqdm(range(args.K), desc="searching"):
+    for _ in tqdm(range(args.K), desc="icm search", disable=not verbose):
         cur_pool = {k: v for k, v in demonstrations.items() if v["label"] is not None}
         if iter == 0:
             pipeline = get_pipeline(
@@ -305,26 +307,42 @@ def run_icm_search(
             T = get_temperature(
                 flip_cnt, args.initial_T, args.final_T, args.decay, schedule=args.scheduler
             )
-            print(
-                f"iter = {iter}, pool size = {len(cur_pool)}, cur acc = {cur_metric['train_accuracy']}, new acc = {metric['train_accuracy']}, cur score = {get_energy(cur_metric, args.alpha)}, new score = {get_energy(metric, args.alpha)}"
-            )
-            print(
-                "cur label distribution = ",
-                Counter([i["label"] for i in demonstrations.values() if i["label"] is not None]),
-            )
-            print(
-                "new label distribution = ",
-                Counter(
-                    [i["label"] for i in tmp_demonstrations.values() if i["label"] is not None]
-                ),
-            )
+            if verbose:
+                print(
+                    f"iter = {iter}, pool size = {len(cur_pool)}, cur acc = {cur_metric['train_accuracy']}, new acc = {metric['train_accuracy']}, cur score = {get_energy(cur_metric, args.alpha)}, new score = {get_energy(metric, args.alpha)}"
+                )
+                print(
+                    "cur label distribution = ",
+                    Counter(
+                        [i["label"] for i in demonstrations.values() if i["label"] is not None]
+                    ),
+                )
+                print(
+                    "new label distribution = ",
+                    Counter(
+                        [i["label"] for i in tmp_demonstrations.values() if i["label"] is not None]
+                    ),
+                )
 
-            accept_prob = math.exp(
-                (get_energy(metric, args.alpha) - get_energy(cur_metric, args.alpha)) / T
-            )
-            print("accept prob = ", accept_prob)
-            if random.random() < accept_prob:
-                print("accept")
+            # First-time labels (None -> {0,1}) always expand the labeled pool.
+            # MH accept/reject only applies to flips of already-labeled examples;
+            # otherwise high alpha + cooled T can permanently leave items unlabeled.
+            was_unlabeled = demonstrations[example_id]["label"] is None
+            if was_unlabeled:
+                accept_prob = 1.0
+                accept = True
+            else:
+                accept_prob = math.exp(
+                    (get_energy(metric, args.alpha) - get_energy(cur_metric, args.alpha)) / T
+                )
+                accept = random.random() < accept_prob
+
+            if verbose:
+                print("accept prob = ", accept_prob)
+
+            if accept:
+                if verbose:
+                    print("accept")
                 demonstrations = tmp_demonstrations
                 flip_cnt += 1
                 cur_metric = metric
@@ -341,10 +359,11 @@ def run_icm_search(
                             )
                             + "\n"
                         )
-            else:
+            elif verbose:
                 print("reject")
 
-        print("=" * 100)
+        if verbose:
+            print("=" * 100)
         iter += 1
 
     return demonstrations, cur_metric

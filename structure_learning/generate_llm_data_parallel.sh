@@ -48,7 +48,7 @@ for dataset in ${datasets[@]}; do
         fi
 
         for seed in $(seq 0 $((nseeds - 1))); do
-            ARGS="--port $PORT --model_name $model_name --sampling_method $sampling_method --temperature $temp --n_samples 200 --top_p 1.0 --n_chains 5 --block_size $block_size --seed $seed ${manual_reasoning_option}"
+            ARGS="--port $PORT --model_name $model_name --sampling_method $sampling_method --temperature $temp --n_samples 200 --top_p 1.0 --n_chains 10 --block_size $block_size --seed $seed ${manual_reasoning_option}"
             launch --dataset_name $dataset $ARGS
         done
     done

@@ -669,7 +669,7 @@ requires-dist = [
     { name = "numpy" },
     { name = "optax", marker = "extra == 'structure-learning'", specifier = ">=0.2.6" },
     { name = "pgmpy", marker = "extra == 'structure-learning'", git = "https://github.com/pgmpy/pgmpy.git?rev=4c2cdb9c6a28e322c489c7e1eeff704536256a8a" },
-    { name = "priorbot", extras = ["remote-llm"], git = "https://github.com/henrygouk/priorbot.git?rev=fa8114e462ae731dc5c1d535ecac16a56fe658c2" },
+    { name = "priorbot", extras = ["remote-llm"], git = "https://github.com/henrygouk/priorbot.git?rev=70326554048978227dcf330ee080282a862bd109" },
     { name = "requests", marker = "extra == 'consistent-reasoning'", specifier = ">=2.32.0" },
     { name = "scikit-learn", marker = "extra == 'structure-learning'", specifier = ">=1.7.2" },
     { name = "tiktoken", marker = "extra == 'consistent-reasoning'", specifier = ">=0.8.0" },
@@ -1299,7 +1299,7 @@ wheels = [
 [[package]]
 name = "priorbot"
 version = "0.2.0"
-source = { git = "https://github.com/henrygouk/priorbot.git?rev=fa8114e462ae731dc5c1d535ecac16a56fe658c2#fa8114e462ae731dc5c1d535ecac16a56fe658c2" }
+source = { git = "https://github.com/henrygouk/priorbot.git?rev=70326554048978227dcf330ee080282a862bd109#70326554048978227dcf330ee080282a862bd109" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
