@@ -6,32 +6,31 @@ https://github.com/tristandeleu/jax-dag-gflownet/blob/master/dag_gflownet/utils/
 import gzip
 import string
 import urllib.request
-from itertools import chain, product, islice, count
+from itertools import chain, count, islice, product
 from pathlib import Path
 
+import networkx as nx
 import numpy as np
 import pandas as pd
-import networkx as nx
 from numpy.random import default_rng
-from pgmpy import models
-from pgmpy.factors.continuous import LinearGaussianCPD
 from pgmpy.example_models import load_model
+from pgmpy.factors.continuous import LinearGaussianCPD
+from pgmpy.models import DiscreteBayesianNetwork, LinearGaussianBayesianNetwork
 from pgmpy.utils import get_example_model
 
 from structure_learning.priors import (
     BasePrior,
-    UniformPrior,
-    ErdosRenyiPrior,
     EdgePrior,
+    ErdosRenyiPrior,
     FairPrior,
-    LLMDataBGePrior,
     LLMDataBDePrior,
+    LLMDataBGePrior,
     LLMEdgeMatrixBernoulliPrior,
     LLMEdgeMatrixL1Prior,
+    UniformPrior,
 )
 from structure_learning.scores import BDeScore, BGeScore
-from structure_learning.utils.bn_utils import sample_from_linear_gaussian
-
+from structure_learning.utils.bn_utils import get_true_domains, sample_from_linear_gaussian
 
 FILE_DIR = Path(__file__).parent
 DATA_DIR = FILE_DIR.parent / "datasets"
@@ -42,7 +41,7 @@ def sample_erdos_renyi_graph(
     p=None,
     num_edges=None,
     nodes=None,
-    create_using=models.BayesianNetwork,
+    create_using=LinearGaussianBayesianNetwork,
     rng=default_rng(),
 ):
     if p is None:
@@ -86,7 +85,7 @@ def sample_erdos_renyi_linear_gaussian(
         p=p,
         num_edges=num_edges,
         nodes=nodes,
-        create_using=models.LinearGaussianBayesianNetwork,  # type: ignore
+        create_using=LinearGaussianBayesianNetwork,
         rng=rng,
     )
 
@@ -124,6 +123,10 @@ def download(url, filename):
 
 
 def get_data(name, args, rng=default_rng()):
+    # Full per-variable domains (dict of node -> list of states) for discrete
+    # data; None means the scorer infers them from the values in the data.
+    domains = None
+
     if name == "erdos_renyi_lingauss":
         graph = sample_erdos_renyi_linear_gaussian(
             num_variables=args.num_variables,
@@ -147,6 +150,8 @@ def get_data(name, args, rng=default_rng()):
         score = "bge"
 
     elif name == "sachs_interventional":
+        # NOTE: The bnlearn data uses states "1"/"2"/"3" while the pgmpy model uses
+        # "LOW"/"AVG"/"HIGH", so the domains are left to be inferred from the data (n=5400).
         graph = get_example_model("sachs")
         assert graph is not None
         filename = download(
@@ -168,16 +173,27 @@ def get_data(name, args, rng=default_rng()):
             )
         # reorder the columns to match the graph
         data = data[list(graph.nodes())]
+
+        # True domains from the ground-truth model (with the dataset-specific
+        # state renames applied, so that they match the saved CSVs).
+        domains = get_true_domains(graph, args.dataset_name)
         score = "bde"
     else:
         raise ValueError(f"Unknown graph type: {args.dataset_name}")
 
-    return graph, data, score
+    return graph, data, score, domains
 
 
 def get_prior(
-    name: str, score: str, num_variables: int, nodes: list[str] | None = None, **kwargs
+    name: str,
+    score: str,
+    graph: DiscreteBayesianNetwork | LinearGaussianBayesianNetwork,
+    **kwargs,
 ) -> BasePrior:
+
+    num_variables = graph.order()
+    nodes = list(graph.nodes())
+
     prior = {
         "uniform": UniformPrior,
         "erdos_renyi": ErdosRenyiPrior,
@@ -193,10 +209,18 @@ def get_prior(
         kwargs["data"] = pd.read_csv(
             kwargs["data_path"], dtype="category" if score == "bde" else float
         )
+        if nodes is not None:
+            if set(kwargs["data"].columns) != set(nodes):
+                raise ValueError(
+                    f"LLM data columns {sorted(kwargs['data'].columns)} do not match "
+                    f"graph nodes {sorted(nodes)} ({kwargs['data_path']})."
+                )
+            kwargs["data"] = kwargs["data"][list(nodes)]
+
         kwargs["base_prior"] = get_prior(
             name=kwargs["base_prior"],
             score=score,
-            num_variables=num_variables,
+            graph=graph,
             **kwargs.get("base_prior_kwargs", {}),
         )
         del kwargs["data_path"]
@@ -221,16 +245,16 @@ def get_prior(
 
 def get_scorer(args, rng=default_rng()):
     # Get the data
-    graph, data, score = get_data(args.graph, args, rng=rng)
+    graph, data, score, domains = get_data(args.graph, args, rng=rng)
+
+    if domains is not None:
+        if score == "bde":
+            args.scorer_kwargs["domains"] = domains
+            if args.prior == "llm_data":
+                args.prior_kwargs["domains"] = domains
 
     # Get the prior
-    prior = get_prior(
-        args.prior,
-        score,
-        num_variables=graph.order(),
-        nodes=list(graph.nodes()),
-        **args.prior_kwargs,
-    )
+    prior = get_prior(args.prior, score, graph, **args.prior_kwargs)
 
     # Get the scorer
     scores = {"bde": BDeScore, "bge": BGeScore}

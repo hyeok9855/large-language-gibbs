@@ -1,13 +1,15 @@
 import sys
 from abc import ABC, abstractmethod
 from collections import namedtuple
+from functools import lru_cache
+from typing import TYPE_CHECKING
 
 import networkx as nx
 import pandas as pd
 from pgmpy.estimators import StructureScore
-from functools import lru_cache
 
-from structure_learning.priors.base import BasePrior
+if TYPE_CHECKING:
+    from structure_learning.priors.base import BasePrior
 
 
 LocalScore = namedtuple("LocalScore", ["key", "score", "prior"])
@@ -25,7 +27,7 @@ class BaseScore(StructureScore, ABC):
         The prior over graphs p(G).
     """
 
-    def __init__(self, data: pd.DataFrame, prior: BasePrior):
+    def __init__(self, data: pd.DataFrame, prior: "BasePrior"):
         StructureScore.__init__(self, data)
         self.prior = prior
         self.num_samples, self.num_variables = data.shape

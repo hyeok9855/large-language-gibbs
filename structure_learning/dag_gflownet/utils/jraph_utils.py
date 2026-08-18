@@ -1,5 +1,5 @@
-import numpy as np
 import jraph
+import numpy as np
 
 from structure_learning.dag_gflownet.utils.np_utils import multirange
 

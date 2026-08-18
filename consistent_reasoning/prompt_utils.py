@@ -1,5 +1,5 @@
-import math
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +33,8 @@ def get_judge_prompt_fewshot(example, demonstrations=None, pipeline=True):
 
 def get_yes_no(x):
     x = x.strip().lower()
-    y = "true" in x
-    n = "false" in x
+    y = x.startswith("true")
+    n = x.startswith("false")
     if y == n:
         return None
     return y
@@ -61,7 +61,7 @@ def extract_claim_logprobs(response):
         logprobs = response["response"]["logprobs"][0]
         response["score"] = get_yes_no_diff_logprobs(logprobs)
     except Exception as e:
-        logger.info(f"Problem {response['metadata']['uid']}: Error extracting judgment: {repr(e)}")
+        logger.warning(f"Problem {response['metadata']['uid']}: Error extracting judgment: {e!r}")
         response["score"] = 0
     return response
 
@@ -72,7 +72,7 @@ def extract_decision_logprobs(response):
         logprobs = response["response"]["logprobs"][0]
         response["score"] = get_yes_no_diff_logprobs(logprobs)
     except Exception as e:
-        logger.info(f"Problem {response['metadata']['uid']}: Error extracting decision: {repr(e)}")
+        logger.warning(f"Problem {response['metadata']['uid']}: Error extracting decision: {e!r}")
         response["score"] = 0
     return response
 
@@ -89,7 +89,10 @@ def _make_judge_prompt_creator(instruction_tuned=False, system_prompt=""):
             for demo in demonstrations:
                 messages.append({"role": "user", "content": demo["prompt"]})
                 messages.append(
-                    {"role": "assistant", "content": "True" if demo["label"] else "False"}
+                    {
+                        "role": "assistant",
+                        "content": "True" if demo["label"] else "False",
+                    }
                 )
             messages.append({"role": "user", "content": example["prompt"]})
 

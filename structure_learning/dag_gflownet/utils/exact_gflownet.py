@@ -1,11 +1,12 @@
-import numpy as np
-import networkx as nx
+from collections import defaultdict, deque
+
 import jax.numpy as jnp
+import networkx as nx
+import numpy as np
 from jax import jit, vmap
 from tqdm import tqdm
 
-from collections import defaultdict, deque
-from structure_learning.dag_gflownet.utils.exhaustive import all_dags, NUM_DAGS
+from structure_learning.dag_gflownet.utils.exhaustive import NUM_DAGS, all_dags
 from structure_learning.utils.nx_utils import (
     get_children,
     graph_to_adjacency,

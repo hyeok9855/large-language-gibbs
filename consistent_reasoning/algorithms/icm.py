@@ -1,20 +1,21 @@
 import asyncio
 import json
+import logging
 import math
 import random
-import logging
 from collections import Counter
 from copy import deepcopy
-from tqdm import tqdm
-import numpy as np
 
-from consistent_reasoning.prompt_utils import (
-    get_judge_prompt_fewshot,
-    extract_claim_logprobs,
-    _make_judge_prompt_creator,
-)
-from consistent_reasoning.pipeline import Pipeline, PipelineConfig
+import numpy as np
+from tqdm import tqdm
+
 from consistent_reasoning.dataloaders import load_assignments
+from consistent_reasoning.pipeline import Pipeline, PipelineConfig
+from consistent_reasoning.prompt_utils import (
+    _make_judge_prompt_creator,
+    extract_claim_logprobs,
+    get_judge_prompt_fewshot,
+)
 
 logger = logging.getLogger(__name__)
 

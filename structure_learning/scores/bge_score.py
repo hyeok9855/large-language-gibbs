@@ -4,12 +4,18 @@ https://github.com/tristandeleu/jax-dag-gflownet/blob/master/dag_gflownet/scores
 """
 
 import math
+from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 from scipy.special import gammaln
 
-from .base import BaseScore, LocalScore
 from structure_learning.utils.math_utils import logdet
+
+from .base import BaseScore, LocalScore
+
+if TYPE_CHECKING:
+    from structure_learning.priors.base import BasePrior
 
 
 class BGeScore(BaseScore):
@@ -42,7 +48,9 @@ class BGeScore(BaseScore):
         of varaibles. By default, `alpha_w = N + 2`.
     """
 
-    def __init__(self, data, prior, mean_obs=None, alpha_mu=1.0, alpha_w=None):
+    def __init__(
+        self, data: pd.DataFrame, prior: "BasePrior", mean_obs=None, alpha_mu=1.0, alpha_w=None
+    ):
         super().__init__(data, prior)
 
         if mean_obs is None:
@@ -88,9 +96,7 @@ class BGeScore(BaseScore):
                 self.num_samples + self.alpha_w - self.num_variables + num_parents
             ) * logdet(self.R[np.ix_(indices, indices)]) - 0.5 * (
                 self.num_samples + self.alpha_w - self.num_variables + num_parents + 1
-            ) * logdet(
-                self.R[np.ix_(variables, variables)]
-            )
+            ) * logdet(self.R[np.ix_(variables, variables)])
         else:
             log_term_r = (
                 -0.5

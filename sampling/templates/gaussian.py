@@ -97,7 +97,6 @@ def create_template_and_schema(
 
     # Gibbs and direct sampling share the same joint-variable template
     if method in ("gibbs", "direct"):
-
         if model_type == "base":
 
             def template(schema: dict[str, Any], observed: dict[str, Any] | None = None) -> str:
@@ -139,9 +138,8 @@ def create_template_and_schema(
 
         return template, schema
 
-    assert (
-        args.model_type == "instruct"
-    ), "Barker or Gambling Gibbs only supports instruct model type"
+    if args.model_type != "instruct":
+        raise ValueError("Barker or Gambling Gibbs only supports instruct model type")
 
     # Barker Gibbs Sampling
     if method == "barker":

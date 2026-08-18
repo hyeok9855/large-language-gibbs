@@ -11,34 +11,35 @@ import random
 import threading
 import time
 from collections import Counter
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
+from consistent_reasoning.algorithms.barker_gibbs import run_barker_gibbs_search
+from consistent_reasoning.algorithms.gambling_gibbs import run_gambling_gibbs_search
+from consistent_reasoning.algorithms.gibbs import run_gibbs_search
+from consistent_reasoning.algorithms.icm import run_icm_search
+from consistent_reasoning.algorithms.npass import run_npass_search
+from consistent_reasoning.algorithms.zeroshot import run_zeroshot_search
+from consistent_reasoning.dataloaders import (
+    CONSISTENT_REASONING_DIR,
+    build_cid_index,
+    build_partitions,
+    initialize,
+    load_eval_set,
+    load_processed_train,
+    select_items_for_chunk,
+)
 from consistent_reasoning.models import (
     ModelAPI,
     OpenAICompatLLM,
     ReasoningOpenAICompatLLM,
     setup_environment,
 )
-from consistent_reasoning.dataloaders import (
-    load_eval_set,
-    build_partitions,
-    build_cid_index,
-    select_items_for_chunk,
-    load_processed_train,
-    initialize,
-    CONSISTENT_REASONING_DIR,
-)
-from consistent_reasoning.algorithms.icm import run_icm_search
-from consistent_reasoning.algorithms.gibbs import run_gibbs_search
-from consistent_reasoning.algorithms.barker_gibbs import run_barker_gibbs_search
-from consistent_reasoning.algorithms.gambling_gibbs import run_gambling_gibbs_search
-from consistent_reasoning.algorithms.npass import run_npass_search
-from consistent_reasoning.algorithms.zeroshot import run_zeroshot_search
 
 _print_lock = threading.Lock()
 
@@ -174,9 +175,6 @@ def run_icm_chunk(
         _chunk_log(f"[p{partition_index:02d} c{chunk_index:02d}] cache hit, skipping")
         return cached
 
-    random.seed(partition_seed)
-    np.random.seed(partition_seed)
-
     fewshot_ids = list(range(len(items)))
     demonstrations, _, whole_ids, _ = initialize(items, fewshot_ids, args)
 
@@ -280,9 +278,6 @@ def _run_label_predict_chunk(
     if cached is not None:
         _chunk_log(f"[p{partition_index:02d} c{chunk_index:02d}] cache hit, skipping")
         return cached
-
-    random.seed(partition_seed)
-    np.random.seed(partition_seed)
 
     demonstrations: dict[int, dict[str, Any]] = {}
     whole_ids: list[int] = []
@@ -506,19 +501,37 @@ def aggregate_run(
     eval_set_meta: dict[str, Any],
     partitions: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    expected_args_snapshot = relevant_args_snapshot(args)
     per_partition_records: list[list[dict[str, Any]]] = []
     for p_info in partitions:
         p_records = []
         for c in range(len(p_info["chunks"])):
             cache_path = _chunk_cache_path(output_dir, p_info["partition_index"], c)
             with cache_path.open() as f:
-                p_records.append(json.load(f))
+                record = json.load(f)
+            if record.get("cache_key_args") != expected_args_snapshot:
+                raise RuntimeError(
+                    f"{cache_path} was computed with different settings "
+                    f"({record.get('cache_key_args')!r} != {expected_args_snapshot!r}); "
+                    "refusing to aggregate."
+                )
+            if record.get("partition_seed") != p_info["partition_seed"]:
+                raise RuntimeError(
+                    f"{cache_path} was computed with different partition_seed: "
+                    f"{record.get('partition_seed')!r} != {p_info['partition_seed']!r}; "
+                    "refusing to aggregate."
+                )
+            p_records.append(record)
         per_partition_records.append(p_records)
 
     per_partition_summaries = [_summarize_partition(prs) for prs in per_partition_records]
     accs = [s["accuracy"] for s in per_partition_summaries if s["accuracy"] is not None]
+    n_predicted_total = sum(s["n_predicted"] for s in per_partition_summaries)
+    n_missing_total = sum(s["n_missing"] for s in per_partition_summaries)
     headline = {
         "n_partitions": len(accs),
+        "n_predicted_total": n_predicted_total,
+        "n_missing_total": n_missing_total,
         "mean_accuracy": float(np.mean(accs)) if accs else None,
         "std_accuracy": float(np.std(accs)) if accs else None,
         "se_accuracy": float(np.std(accs, ddof=1) / np.sqrt(len(accs))) if len(accs) > 1 else None,
@@ -588,6 +601,12 @@ def aggregate_run(
         f"per-item correct-count dist (out of {n_partitions}): "
         f"{summary['per_item_correct_count_distribution']}"
     )
+    if n_missing_total:
+        raise RuntimeError(
+            f"{n_missing_total}/{n_missing_total + n_predicted_total} predictions "
+            f"have predicted_label=None and were excluded from the accuracies above; "
+            f"the headline is thus not comparable to runs that label every item."
+        )
     return summary
 
 
@@ -630,13 +649,15 @@ def _print_plan(
 
 
 def main(args: argparse.Namespace) -> None:
-    setup_environment(logger_level="error")
+    setup_environment(logger_level="warning")
+
+    random.seed(args.partition_base_seed)
+    np.random.seed(args.partition_base_seed)
 
     eval_set = load_eval_set(CONSISTENT_REASONING_DIR / "eval_sets" / f"{args.testbed}.json")
     if eval_set["testbed"] != args.testbed:
         raise ValueError(
-            f"eval_set testbed={eval_set['testbed']!r} does not match "
-            f"--testbed={args.testbed!r}"
+            f"eval_set testbed={eval_set['testbed']!r} does not match --testbed={args.testbed!r}"
         )
 
     train = load_processed_train(args)  # also sets args.GROUP_SIZE
@@ -891,11 +912,7 @@ if __name__ == "__main__":
                 f"_baseseed{args.partition_base_seed}"
             )
         if args.algorithm == "zeroshot":
-            return (
-                f"zeroshot_{model_short}"
-                f"_T{args.temperature}"
-                f"_baseseed{args.partition_base_seed}"
-            )
+            return f"zeroshot_{model_short}_T{args.temperature}_baseseed{args.partition_base_seed}"
         if args.algorithm == "npass":
             n_str = "Nall" if args.all_pass else f"N{args.n_passes}"
             return (

@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Any, Callable, cast
 
 import numpy as np
+from priorbot.priors import GibbsLLMPrior, Prior
 from tqdm import tqdm
 
-from priorbot.priors import GibbsLLMPrior, Prior
 from consistent_reasoning.models import OpenAICompatLLM
 from consistent_reasoning.prompt_utils import get_judge_prompt_fewshot
 
@@ -198,7 +198,7 @@ class LoggedGibbsLLMPrior(GibbsLLMPrior):
             if self.on_step is not None:
                 self.on_step(step, new_sample, key_to_resample)
 
-        return samples[self.burn_in :: self.thinning][:n_samples]
+        return samples[self.burn_in + self.thinning :: self.thinning][:n_samples]
 
 
 def build_schema(example_ids: list[int]) -> dict[str, Any]:
@@ -304,7 +304,10 @@ def run_gibbs_search(
     true_fractions = {
         key: sum(int(bool(s[key])) for s in samples) / len(samples) for key in sample_keys
     }
-    final_assignment = {key: true_fractions[key] > 0.5 for key in sample_keys}
+    final_assignment = {
+        key: (bool(random.randint(0, 1)) if frac == 0.5 else frac > 0.5)
+        for key, frac in true_fractions.items()
+    }
     final_demos = apply_assignment_to_demos(demonstrations, final_assignment)
     for key, frac in true_fractions.items():
         final_demos[int(key)]["_predicted_score"] = float(frac)

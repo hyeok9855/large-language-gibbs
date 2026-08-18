@@ -9,13 +9,14 @@ import numpy as np
 
 from structure_learning.utils.misc_utils import MODEL_NAME_TO_TYPE, STRUCTURE_LEARNING_DIR
 
-# (model, method, temp, gamma) — temp and gamma are None for uninformative priors
-AlgoKey = tuple[str, str, float | None, float | None]
+# (model, method, temp, base_prior, gamma)
+AlgoKey = tuple[str, str, float | None, str | None, float | None]
 
 BASE_DIR = STRUCTURE_LEARNING_DIR / "results"
 
-LLM_EXP_PATTERN = re.compile(r"^(.+?)_temp(\d+\.?\d*)_gamma(\d+\.?\d*)$")
-EDGE_BETA_PATTERN = re.compile(r"^edge_beta(\d+\.?\d*)$")
+# base_prior may carry an edge beta, e.g. "edge-beta0.9", hence [\w.-]
+LLM_EXP_PATTERN = re.compile(r"^(.+?)_temp(\d+\.?\d*)(?:_base([\w.-]+?))?_gamma(\d+\.?\d*)$")
+EDGE_BETA_PATTERN = re.compile(r"^edge-beta(\d+\.?\d*)$")
 RUN_SUFFIX_PATTERN = re.compile(r"_sd(\d+)$")
 
 
@@ -73,8 +74,14 @@ def canonical_method(method: str, model_slug: str) -> str:
     return method
 
 
+def _plot_method_key(method: str) -> str:
+    return "edge" if "edge" in method else method
+
+
 METHOD_DISPLAY = {
     "uniform": "Uniform",
+    "edge": "Edge",
+    "fair": "Fair",
     "direct": "Direct",
     "direct_instruct": "Direct-Inst.",
     "gibbs": "Gibbs",
@@ -87,6 +94,8 @@ TEMP_DISPLAY = [0.0, 1.0]
 
 METHOD_ORDER = [
     "uniform",
+    "edge",
+    "fair",
     "direct",
     "direct_instruct",
     "gibbs",
@@ -97,6 +106,8 @@ METHOD_ORDER = [
 
 PALETTE = {
     "uniform": "#1f77b4",
+    "edge": "#1f77b4",
+    "fair": "#1f77b4",
     "direct": "#ffbb78",
     "direct_instruct": "#aec7e8",
     "gibbs": "#d62728",
@@ -113,26 +124,20 @@ def _normalize_method(method: str) -> str:
 
 
 def parse_experiment(model: str, name: str) -> AlgoKey:
-    """Return (model, method, temp, gamma).
-
-    ``temp`` and ``gamma`` are ``None`` for uninformative priors.
-    """
+    """Return (model, method, temp, base_prior, gamma)."""
     name = RUN_SUFFIX_PATTERN.sub("", name)
 
     if model == "uninformative":
-        if name == "uniform":
-            return (model, "uniform", None, None)
-        if name == "fair":
-            return (model, "fair", None, None)
-        if EDGE_BETA_PATTERN.match(name) or name == "edge":
-            return (model, "edge", None, None)
-        return (model, name, None, None)
+        return (model, name, None, None, None)
 
     m = LLM_EXP_PATTERN.match(name)
     if m:
         method = _normalize_method(m.group(1))
-        return (model, method, float(m.group(2)), float(m.group(3)))
-    return (model, _normalize_method(name), None, None)
+        temp = m.group(2)
+        base_prior = m.group(3)
+        gamma = m.group(4)
+        return (model, method, float(temp), base_prior, float(gamma))
+    return (model, _normalize_method(name), None, None, None)
 
 
 def load_results(base_dir: Path) -> dict[AlgoKey, list[dict]]:
@@ -171,10 +176,10 @@ def group_family_results(
     merged: dict[AlgoKey, list[dict]] = defaultdict(list)
 
     for key, runs in grouped.items():
-        model, method, temp, gamma_key = key
+        model, method, temp, base_prior, gamma_key = key
 
         if model == "uninformative":
-            if method in METHOD_DISPLAY:
+            if _plot_method_key(method) in METHOD_DISPLAY:
                 merged[key].extend(runs)
             continue
 
@@ -187,7 +192,7 @@ def group_family_results(
         if plot_method not in METHOD_DISPLAY:
             continue
 
-        plot_key = (family_base, plot_method, temp, gamma_key)
+        plot_key = (family_base, plot_method, temp, base_prior, gamma_key)
         merged[plot_key].extend(runs)
 
     return dict(merged)
@@ -198,20 +203,33 @@ def _model_sort_idx(model: str) -> tuple[int, str]:
     return (0 if model == "uninformative" else 1, model)
 
 
-def _sort_key(key: AlgoKey) -> tuple[tuple[int, str], int, float, float]:
-    model, method, temp, gamma = key
-    method_idx = METHOD_ORDER.index(method) if method in METHOD_ORDER else len(METHOD_ORDER)
+def _sort_key(key: AlgoKey) -> tuple[tuple[int, str], int, float, str, float]:
+    model, method, temp, base_prior, gamma = key
+    plot_method = _plot_method_key(method)
+    method_idx = (
+        METHOD_ORDER.index(_plot_method_key(method))
+        if plot_method in METHOD_ORDER
+        else len(METHOD_ORDER)
+    )
     return (
         _model_sort_idx(model),
         method_idx,
         temp if temp is not None else -1.0,
+        base_prior if base_prior is not None else "",
         gamma if gamma is not None else -1.0,
     )
 
 
 def _label(key: AlgoKey) -> str:
-    _model, method, temp, _gamma = key
-    display = METHOD_DISPLAY.get(method, method.capitalize())
+    _model, method, temp, base_prior, _gamma = key
+    plot_method = _plot_method_key(method)
+    if plot_method == "edge":
+        m_edge = EDGE_BETA_PATTERN.match(method)
+        display = f"Edge (β={m_edge.group(1)})" if m_edge else METHOD_DISPLAY["edge"]
+    else:
+        display = METHOD_DISPLAY.get(plot_method, method.capitalize())
+    if base_prior is not None and base_prior != "uniform":
+        display = f"{display}\n({base_prior})"
     if temp is None:
         return display
     # return f"{display}\nt={temp:g}"
@@ -229,7 +247,7 @@ def make_boxplot(
     keys = sorted(grouped.keys(), key=_sort_key)
     n_groups = len(keys)
     labels = [_label(k) for k in keys]
-    colors = [PALETTE.get(k[1], "#999999") for k in keys]
+    colors = [PALETTE.get(_plot_method_key(k[1]), "#999999") for k in keys]
 
     if figsize is None:
         figsize = (max(10.0, 1.0 * n_groups), 4.5)
@@ -327,8 +345,7 @@ def plot_family(
         )
 
     print(
-        f"Loaded algorithms (uninformative + {family_id}, "
-        f"slugs={available_slugs}, gamma={gamma}):"
+        f"Loaded algorithms (uninformative + {family_id}, slugs={available_slugs}, gamma={gamma}):"
     )
     for key in sorted(grouped.keys(), key=_sort_key):
         names = [f"{r['_model']}/{r['_exp_name']}" for r in grouped[key]]

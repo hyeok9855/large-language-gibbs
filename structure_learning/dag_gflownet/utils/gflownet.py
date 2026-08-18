@@ -1,9 +1,8 @@
-import numpy as np
 import jax.numpy as jnp
+import numpy as np
 import optax
-
+from jax import lax, nn
 from tqdm.auto import trange
-from jax import nn, lax
 
 MASKED_VALUE = -1e5
 

@@ -84,22 +84,21 @@ def build_data_path(
     )
 
 
-def build_exp_name(
+def build_llm_exp_name(
     model_name: str,
     sampling_method: str,
     gamma: float,
     seed: int,
     manual_reasoning: bool,
+    base_prior_name: str,
 ) -> str:
     model_slug = model_name.replace("/", "--")
     reasoning_suffix = "_reasoning" if manual_reasoning else ""
     temp = 0.0 if sampling_method == "gambling_gibbs" else 1.0
-    return f"{model_slug}/{sampling_method}{reasoning_suffix}_temp{temp}_gamma{gamma}_sd{seed}"
-
-
-def build_uninformative_exp_name(prior: str, seed: int, edge_beta: float) -> str:
-    name = f"edge_beta{edge_beta}" if prior == "edge" else prior
-    return f"uninformative/{name}_sd{seed}"
+    return (
+        f"{model_slug}/{sampling_method}{reasoning_suffix}"
+        f"_temp{temp}_base{base_prior_name}_gamma{gamma}_sd{seed}"
+    )
 
 
 def log_path_for(experiment: Experiment, gpu: int) -> Path:
@@ -121,6 +120,10 @@ def iter_experiments(args: argparse.Namespace) -> list[Experiment]:
     experiments: list[Experiment] = []
     prior = args.prior
     if prior != "llm_data":
+        name = prior
+        if name == "edge":
+            name += f"-beta{args.edge_beta}"
+
         for seed in args.seeds:
             for dataset_name in args.datasets:
                 experiments.append(
@@ -132,11 +135,15 @@ def iter_experiments(args: argparse.Namespace) -> list[Experiment]:
                         gamma=0.0,
                         seed=seed,
                         data_path=None,
-                        exp_name=build_uninformative_exp_name(prior, seed, args.edge_beta),
+                        exp_name=f"uninformative/{name}_sd{seed}",
                     )
                 )
 
     else:
+        base_prior_name = args.llm_data_base_prior
+        if base_prior_name == "edge":
+            base_prior_name += f"-beta{args.edge_beta}"
+
         for gamma in args.gammas:
             for seed in args.seeds:
                 for dataset_name in args.datasets:
@@ -156,12 +163,13 @@ def iter_experiments(args: argparse.Namespace) -> list[Experiment]:
                                     seed=seed,
                                     manual_reasoning=args.manual_reasoning,
                                 ),
-                                exp_name=build_exp_name(
+                                exp_name=build_llm_exp_name(
                                     model_name=args.model_name,
                                     sampling_method=sampling_method,
                                     gamma=gamma,
                                     seed=seed,
                                     manual_reasoning=args.manual_reasoning,
+                                    base_prior_name=base_prior_name,
                                 ),
                             )
                         )
@@ -330,6 +338,16 @@ def main(args: argparse.Namespace) -> None:
     skipped = len(all_experiments) - len(experiments)
     if skipped:
         print(f"Skipping {skipped} experiment(s) with existing results.")
+
+    missing = [
+        exp for exp in experiments if exp.data_path is not None and not exp.data_path.is_file()
+    ]
+    if missing:
+        missing_paths = "\n".join(f"  {exp.data_path}" for exp in missing)
+        raise FileNotFoundError(
+            f"{len(missing)} experiment(s) reference LLM data files that do not exist "
+            f"(generate them first, or check DATASET_PARAMS):\n{missing_paths}"
+        )
 
     commands = [build_train_command(exp, args) for exp in experiments]
     print(f"Planned {len(experiments)} experiment(s) on GPUs {args.gpus}.")

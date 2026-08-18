@@ -1,20 +1,20 @@
+import json
+import pickle
+
+import jax
+import networkx as nx
 import numpy as np
 import optax
-import networkx as nx
-import pickle
-import jax
-from tqdm import tqdm
 from numpy.random import default_rng
+from tqdm import tqdm
 
 from structure_learning.dag_gflownet.env import GFlowNetDAGEnv
 from structure_learning.dag_gflownet.gflownet import DAGGFlowNet
-from structure_learning.dag_gflownet.utils.replay_buffer import ReplayBuffer
 from structure_learning.dag_gflownet.utils.gflownet import posterior_estimate
-
-from structure_learning.utils.eval_utils import expected_shd, expected_edges, threshold_metrics
-from structure_learning.utils.score_utils import get_scorer
+from structure_learning.dag_gflownet.utils.replay_buffer import ReplayBuffer
+from structure_learning.utils.eval_utils import expected_edges, expected_shd, threshold_metrics
 from structure_learning.utils.misc_utils import STRUCTURE_LEARNING_DIR
-
+from structure_learning.utils.score_utils import get_scorer
 
 OUTPUT_FOLDER = STRUCTURE_LEARNING_DIR / "results"
 
@@ -170,7 +170,6 @@ def main(args):
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
-    import json
 
     parser = ArgumentParser(description="DAG-GFlowNet for Strucure Learning.")
 

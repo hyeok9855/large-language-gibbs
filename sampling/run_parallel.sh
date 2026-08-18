@@ -21,9 +21,9 @@ launch() {
 TARGET=$1  # uniform (discrete), gaussian (continuous)
 MODEL=$2  # meta-llama/Llama-3.1-8B, meta-llama/Llama-3.1-8B-Instruct, allenai/Olmo-3-1125-32B, allenai/Olmo-3-32B-Think
 PORT=$3
-TEMP=${4:-1.0}
-NSEEDS=${5:-25}
-REASONING=${6:-false}
+NSEEDS=${4:-25}
+REASONING=${5:-false}
+TEMP=${6:-1.0}
 
 if [ "$REASONING" = true ]; then
     REASONING_FLAG="--manual_reasoning"

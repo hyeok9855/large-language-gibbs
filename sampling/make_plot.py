@@ -1,9 +1,10 @@
 import argparse
 import json
-import numpy as np
-import matplotlib.pyplot as plt
-from pathlib import Path
 import re
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
@@ -101,7 +102,14 @@ def parse_args():
 def main():
     args = parse_args()
     base_dir = RESULTS_DIR
+    if not base_dir.is_dir():
+        print(f"No results directory found at {base_dir}.")
+        return
+
     for target_dir in base_dir.iterdir():
+        if not target_dir.is_dir():
+            continue
+
         found = False
         for data_dir in sorted(target_dir.iterdir()):
             if not data_dir.is_dir():
@@ -121,7 +129,7 @@ def main():
             )
 
         if not found:
-            print(f"No parameterized result directories found in {base_dir}.")
+            print(f"No parameterized result directories found in {target_dir}.")
 
 
 def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
@@ -150,7 +158,7 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
     if len(methods) == 1:
         axes = [axes]
 
-    # Plot Max Autocorrelation per Seed (lags 1..256; lag 0 excluded since it's trivially 1)
+    # Plot Max Autocorrelation per Seed (lags 1..max_lag; lag 0 excluded since it's trivially 1)
     max_lag = 128
     fig_max_acf, axes_max_acf = plt.subplots(
         len(methods), 1, figsize=(8, 3 * len(methods)), sharex=False, sharey=True
@@ -309,7 +317,6 @@ def plot_result_dir(target_name, data_dir, params, ignore_unknown_methods=False)
 
         method_data = {}
         for filepath in model_dir.glob("*.json"):
-
             method, seed = parse_filename(filepath)
             if method == "Unknown" or seed is None:
                 continue

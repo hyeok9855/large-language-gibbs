@@ -1,6 +1,6 @@
-import numpy as np
 import math
 
+import numpy as np
 from numpy.random import default_rng
 
 
@@ -109,7 +109,7 @@ class ReplayBuffer:
         with open(filename, "rb") as f:
             data = np.load(f)
             if data["version"] != 2:
-                raise IOError(f'Unknown version: {data["version"]}')
+                raise IOError(f"Unknown version: {data['version']}")
             replay = cls(capacity=data["capacity"], num_variables=data["num_variables"])
             replay._index = data["index"]
             replay._is_full = data["is_full"]

@@ -1,7 +1,7 @@
-import numpy as np
-import haiku as hk
-
 from typing import Mapping
+
+import haiku as hk
+import numpy as np
 
 
 def save(filename, **trees):

@@ -1,12 +1,12 @@
-import numpy as np
-import networkx as nx
-
-from scipy.special import logsumexp
-from dataclasses import dataclass
 from collections import defaultdict
-from typing import DefaultDict
-from pgmpy.utils.mathext import powerset
+from dataclasses import dataclass
 from itertools import permutations, product
+from typing import DefaultDict
+
+import networkx as nx
+import numpy as np
+from pgmpy.utils.mathext import powerset
+from scipy.special import logsumexp
 from tqdm import tqdm
 
 # from structure_learning.utils.nx_utils import get_markov_blanket_graph
@@ -288,7 +288,6 @@ def all_dags_legacy(num_variables, nodelist=None):
 
 
 if __name__ == "__main__":
-
     import time
 
     num_variables = 5

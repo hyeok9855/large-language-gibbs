@@ -4,13 +4,16 @@ https://github.com/tristandeleu/jax-dag-gflownet/blob/master/dag_gflownet/scores
 """
 
 import math
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 from scipy.special import gammaln
 
-from structure_learning.priors.base import BasePrior
 from .base import BaseScore, LocalScore
+
+if TYPE_CHECKING:
+    from structure_learning.priors.base import BasePrior
 
 
 class BDeScore(BaseScore):
@@ -31,9 +34,22 @@ class BDeScore(BaseScore):
         The equivalent sample size (of uniform pseudo samples) for the
         Dirichlet hyperparameters. The score is sensitive to this value,
         runs with different values might be useful.
+
+    domains : dict of (str, list), optional
+        The full domain (list of possible states) of each variable, keyed by
+        column name. If provided, the cardinalities are taken from these
+        domains, so states that never appear in the data still count, and any
+        observed value outside its domain raises a ValueError. If None, the
+        domains are inferred from the values present in the data.
     """
 
-    def __init__(self, data: pd.DataFrame, prior: BasePrior, equivalent_sample_size: float = 1.0):
+    def __init__(
+        self,
+        data: pd.DataFrame,
+        prior: "BasePrior",
+        equivalent_sample_size: float = 1.0,
+        domains: dict[str, list] | None = None,
+    ):
         if "INT" in data.columns:  # Interventional data
             # Indices should start at 0, instead of 1;
             # observational data will have INT == -1.
@@ -41,6 +57,21 @@ class BDeScore(BaseScore):
             data = data.drop(["INT"], axis=1)
         else:
             self._interventions = np.full(data.shape[0], -1)
+
+        if domains is not None:
+            missing_col = set(data.columns) - set(domains)
+            if missing_col:
+                raise ValueError(f"No domain provided for columns: {sorted(missing_col)}")
+            data = data.copy()
+            for column in data.columns:
+                invalid = set(data[column].dropna().unique()) - set(domains[column])
+                if invalid:
+                    raise ValueError(
+                        f"Column '{column}' contains values {sorted(invalid)} outside "
+                        f"its domain {sorted(domains[column])}."
+                    )
+                data[column] = data[column].cat.set_categories(domains[column])
+
         super().__init__(data, prior)
         self.equivalent_sample_size = equivalent_sample_size
 

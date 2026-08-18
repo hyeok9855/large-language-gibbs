@@ -2,23 +2,24 @@ import json
 import math
 import os
 import random
-from argparse import ArgumentParser, Namespace
-from typing import Any
 import warnings
+from argparse import ArgumentParser, Namespace
+from copy import deepcopy
+from typing import Any
 
 import numpy as np
 import pandas as pd
-
 from priorbot.llm import OpenAICompatLLM
 from priorbot.priors import BarkerGibbsLLMPrior, GamblingGibbsLLMPrior, GibbsLLMPrior, LLMPrior
 
+from structure_learning.utils.bn_utils import get_feature_renames
+from structure_learning.utils.llm_data_utils import get_llm_data_run_name
+from structure_learning.utils.misc_utils import DATASETS_DIR, MODEL_NAME_TO_TYPE, load_meta
 from structure_learning.utils.prompt_utils import (
     build_system_prompt,
     get_dataset_description,
     get_feature_description,
 )
-from structure_learning.utils.misc_utils import DATASETS_DIR, MODEL_NAME_TO_TYPE, load_meta
-from structure_learning.utils.llm_data_utils import get_llm_data_run_name
 
 
 def build_schema(meta: dict) -> dict:
@@ -130,7 +131,6 @@ def main(args: Namespace) -> None:
                 )
 
         case "barker_gibbs":
-
             if args.model_type != "instruct":
                 raise ValueError("Barker prior only supports instruct LLM type")
 
@@ -179,7 +179,6 @@ def main(args: Namespace) -> None:
                 prior.reasoning_prompt = prior.reasoning_prompt.replace("step-by-step", "brief")
 
         case "gambling_gibbs":
-
             if args.model_type != "instruct":
                 raise ValueError("Gambling prior only supports instruct LLM type")
 
@@ -237,7 +236,10 @@ def main(args: Namespace) -> None:
         1 if args.n_samples % args.n_chains > 0 else 0
     )
     samples_per_chain = prior.sample_parallel(
-        n_samples_per_chain, [schema] * args.n_chains, verbose=args.verbose, pbar=args.pbar
+        n_samples_per_chain,
+        [deepcopy(schema) for _ in range(args.n_chains)],
+        verbose=args.verbose,
+        pbar=args.pbar,
     )
     samples = [sample for chain_samples in samples_per_chain for sample in chain_samples]
     samples = samples[: args.n_samples]
@@ -245,11 +247,10 @@ def main(args: Namespace) -> None:
     columns = list(meta["features"].keys())
     df = pd.DataFrame(samples, columns=columns, dtype="category")
 
-    # Rename back to the original column names if needed
-    if args.dataset_name in ["bnrep_tubercolosis"]:
-        df = df.rename(columns={"Tuberculosis": "Tubercolosis"})
-    if args.dataset_name in ["bnrep_knowledge"]:
-        df = df.rename(columns={"C#": "C"})
+    # Rename the LLM-facing feature names back to the original column names
+    llm_to_raw = {v: k for k, v in get_feature_renames(args.dataset_name).items()}
+    if llm_to_raw:
+        df = df.rename(columns=llm_to_raw)
 
     df.to_csv(output_path, index=False)
     print(f"Saved {len(df)} samples to {output_path}")

@@ -1,6 +1,5 @@
-import jax.numpy as jnp
 import haiku as hk
-
+import jax.numpy as jnp
 from jax import nn
 
 from structure_learning.dag_gflownet.nets.attention import LinearMultiHeadAttention

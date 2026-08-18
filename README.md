@@ -48,9 +48,9 @@ uv run python sampling/run.py \
 
 Existing result files are not overwritten; matching runs are skipped.
 
-`run_multiseed.sh` launches experiments for multiple methods and seeds in parallel: independent and batch sampling, Gibbs with block sizes 1 and 4, and Barker/Gambling variants (only when using an instruct model). For example (5 seeds):
+`run_parallel.sh` launches experiments for multiple methods and seeds in parallel: independent and batch sampling, Gibbs with block sizes 1 and 4, and Barker/Gambling variants (only when using an instruct model). For example (5 seeds):
 ```bash
-bash sampling/run_multiseed.sh gaussian meta-llama/Llama-3.1-8B 8000 5
+bash sampling/run_parallel.sh gaussian meta-llama/Llama-3.1-8B 8000 5
 ```
 
 The script starts many jobs concurrently, so make sure the backing API server can handle the requested load.

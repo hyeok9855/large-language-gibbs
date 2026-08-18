@@ -80,8 +80,7 @@ def run_npass_search(
                     chosen = llm.generate(prompt, schema=label_choices, verbose=False)
                 if not isinstance(chosen, str):
                     raise TypeError(
-                        f"Expected a string from choice-constrained generation; "
-                        f"got {type(chosen)}"
+                        f"Expected a string from choice-constrained generation; got {type(chosen)}"
                     )
                 value = chosen.strip().capitalize() == "True"
 

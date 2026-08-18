@@ -141,9 +141,9 @@ class QueryConfigBuilder:
         assert (self.data is not None) or (
             self.dataloader_fn is not None and self.data_location is not None
         ), "Data must be set"
-        assert (self.data is None) or (
-            self.dataloader_fn is None and self.data_location is None
-        ), "Data and dataloader_fn/data_location cannot both be set"
+        assert (self.data is None) or (self.dataloader_fn is None and self.data_location is None), (
+            "Data and dataloader_fn/data_location cannot both be set"
+        )
         return QueryConfig(
             self.experiment_name,
             self.model_to_test,

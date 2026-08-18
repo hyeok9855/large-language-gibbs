@@ -27,7 +27,6 @@ class BasePrior(ABC):
         """
         Return a local prior score for a given node (target) and its parents (indices).
         """
-        pass
 
     def score(self, graph: nx.DiGraph) -> float:
         """

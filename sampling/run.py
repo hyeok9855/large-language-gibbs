@@ -4,8 +4,10 @@ import os
 import random
 from copy import deepcopy
 
+import numpy as np
 from priorbot.llm import OpenAICompatLLM
 from priorbot.priors import BarkerGibbsLLMPrior, GamblingGibbsLLMPrior, GibbsLLMPrior, LLMPrior
+
 from sampling.utils import MODEL_NAME_TO_TYPE, RESULTS_DIR
 
 
@@ -117,11 +119,11 @@ def main(args: argparse.Namespace):
             batch_samples_flat = []
             for s_chain in batch_results:
                 batch_samples_flat += s_chain[0]["samples"]
+            batch_samples_flat = batch_samples_flat[: args.n_samples]
+            assert len(batch_samples_flat) == args.n_samples
 
             with open(batch_out_path, "w") as f:
                 json.dump(batch_samples_flat, f)
-            batch_samples_flat = batch_samples_flat[: args.n_samples]
-            assert len(batch_samples_flat) == args.n_samples
             print(f"Saved {len(batch_samples_flat)} samples to {batch_out_path}")
 
     # 3. Direct Sampling (single-pass, random feature order)
@@ -134,7 +136,6 @@ def main(args: argparse.Namespace):
         if direct_out_path.exists():
             print(f"Results already exist at {direct_out_path}, skipping...")
         else:
-            assert args.n_samples % args.gibbs_k_vars == 0
             direct_n_samples = args.n_samples // args.gibbs_k_vars
             llm = OpenAICompatLLM(
                 **llm_common_kwargs,
@@ -180,7 +181,6 @@ def main(args: argparse.Namespace):
         if gibbs_out_path.exists():
             print(f"Results already exist at {gibbs_out_path}, skipping...")
         else:
-            assert args.n_samples % args.gibbs_k_vars == 0
             gibbs_n_samples = args.n_samples // args.gibbs_k_vars
             llm = OpenAICompatLLM(
                 **llm_common_kwargs,
@@ -234,7 +234,6 @@ def main(args: argparse.Namespace):
             # Base models can't reliably follow the JSON-choice schema used by the acceptance step.
             print("Barker-Gibbs requires an instruct model, skipping...")
         else:
-            assert args.n_samples % args.gibbs_k_vars == 0
             gibbs_n_samples = args.n_samples // args.gibbs_k_vars
             llm = OpenAICompatLLM(
                 **llm_common_kwargs,
@@ -284,7 +283,6 @@ def main(args: argparse.Namespace):
         elif args.model_type != "instruct":
             print("Gambling-Gibbs requires an instruct model, skipping...")
         else:
-            assert args.n_samples % args.gibbs_k_vars == 0
             gibbs_n_samples = args.n_samples // args.gibbs_k_vars
             llm = OpenAICompatLLM(
                 **llm_common_kwargs,
@@ -395,11 +393,27 @@ if __name__ == "__main__":
     if args.burn_in is None:
         args.burn_in = min(100, (args.n_samples // args.n_chains) * args.thinning // 10)
 
-    args.model_type = MODEL_NAME_TO_TYPE.get(args.model_name, "base")
+    args.model_type = MODEL_NAME_TO_TYPE[args.model_name]
 
     random.seed(args.seed)
+    np.random.seed(args.seed)
 
-    assert args.n_samples % args.n_chains == 0
+    if args.n_samples % args.n_chains != 0:
+        raise ValueError(
+            f"n_samples ({args.n_samples}) must be divisible by n_chains ({args.n_chains})."
+        )
     args.n_samples_per_chain = args.n_samples // args.n_chains
+
+    if any(m in args.methods for m in ("direct", "gibbs", "barker", "gambling")):
+        if args.n_samples % args.gibbs_k_vars != 0:
+            raise ValueError(
+                f"n_samples ({args.n_samples}) must be divisible by "
+                f"gibbs_k_vars ({args.gibbs_k_vars})."
+            )
+        if (args.n_samples // args.gibbs_k_vars) % args.n_chains != 0:
+            raise ValueError(
+                f"(n_samples // gibbs_k_vars) ({args.n_samples // args.gibbs_k_vars}) must be "
+                f"divisible by n_chains ({args.n_chains})."
+            )
 
     main(args)

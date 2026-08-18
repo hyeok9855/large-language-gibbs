@@ -5,13 +5,14 @@ and also https://github.com/tristandeleu/jax-dag-gflownet/blob/master/dag_gflown
 
 from abc import ABC
 
-import pandas as pd
 import numpy as np
+import pandas as pd
+
+from structure_learning.scores.bde_score import BDeScore
+from structure_learning.scores.bge_score import BGeScore
 
 from .base import BasePrior
 from .uninformative_priors import UninformativePrior
-from structure_learning.scores.bde_score import BDeScore
-from structure_learning.scores.bge_score import BGeScore
 
 
 class LLMDataPrior(BasePrior, ABC):
@@ -94,6 +95,7 @@ class LLMDataBDePrior(LLMDataPrior):
         equivalent_sample_size: float. The equivalent sample size (of uniform pseudo samples) for
             the Dirichlet hyperparameters. The score is sensitive to this value, runs with
             different values might be useful.
+        domains: Full per-variable domains (see `BDeScore`).
     """
 
     def __init__(
@@ -103,6 +105,7 @@ class LLMDataBDePrior(LLMDataPrior):
         base_prior: UninformativePrior,
         gamma: float = 1.0,
         equivalent_sample_size: float = 1.0,
+        domains: dict[str, list] | None = None,
     ):
         super().__init__(num_variables, data, base_prior, gamma)
 
@@ -110,6 +113,7 @@ class LLMDataBDePrior(LLMDataPrior):
             data=self.data,
             prior=self.base_prior,
             equivalent_sample_size=equivalent_sample_size,
+            domains=domains,
         )
 
     def local_score(self, target: int, indices: tuple[int, ...]) -> float:

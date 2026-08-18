@@ -1,18 +1,14 @@
-import jax.numpy as jnp
-import haiku as hk  # TODO: replace with flax
-import optax
-
 from collections import namedtuple
 from functools import partial
-from jax import grad, random, vmap, jit
+
+import haiku as hk  # TODO: replace with flax
+import jax.numpy as jnp
+import optax
+from jax import grad, jit, random, vmap
 
 from structure_learning.dag_gflownet.nets.gflownet import gflownet
-from structure_learning.dag_gflownet.utils.gflownet import (
-    uniform_log_policy,
-    detailed_balance_loss,
-)
+from structure_learning.dag_gflownet.utils.gflownet import detailed_balance_loss, uniform_log_policy
 from structure_learning.dag_gflownet.utils.jnp_utils import batch_random_choice
-
 
 DAGGFlowNetParameters = namedtuple("DAGGFlowNetParameters", ["online", "target"])
 DAGGFlowNetState = namedtuple("DAGGFlowNetState", ["optimizer", "steps"])

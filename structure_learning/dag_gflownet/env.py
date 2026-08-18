@@ -1,10 +1,10 @@
-import numpy as np
-import gym
 import bisect
-
-from multiprocessing import get_context
 from copy import deepcopy
-from gym.spaces import Dict, Box, Discrete
+from multiprocessing import get_context
+
+import gym
+import numpy as np
+from gym.spaces import Box, Dict, Discrete
 
 from structure_learning.dag_gflownet.utils.cache import LRUCache
 

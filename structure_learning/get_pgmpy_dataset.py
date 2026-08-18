@@ -1,16 +1,19 @@
-from argparse import ArgumentParser
 import json
-from pathlib import Path
 import pickle
-
 import urllib.request
+from argparse import ArgumentParser
+from pathlib import Path
 
 import pandas as pd
-
 from pgmpy.example_models import load_model
-from pgmpy.models.DiscreteBayesianNetwork import DiscreteBayesianNetwork
 from pgmpy.factors.discrete.CPD import TabularCPD
+from pgmpy.models.DiscreteBayesianNetwork import DiscreteBayesianNetwork
 
+from structure_learning.utils.bn_utils import (
+    get_feature_renames,
+    get_state_renames,
+    get_true_domains,
+)
 
 STRUCTURE_LEARNING_DIR = Path(__file__).parent
 
@@ -26,15 +29,14 @@ if __name__ == "__main__":
         raise ValueError("datasets should be provided.")
 
     for dataset_name in args.datasets:
-
         pgmpy_model = load_model(dataset_name)
 
         base_dir = STRUCTURE_LEARNING_DIR / "datasets" / dataset_name.replace("/", "_")
         base_dir.mkdir(parents=True, exist_ok=True)
 
-        assert isinstance(
-            pgmpy_model, DiscreteBayesianNetwork
-        ), "This script supports only DiscreteBayesianNetwork models for now."
+        assert isinstance(pgmpy_model, DiscreteBayesianNetwork), (
+            "This script supports only DiscreteBayesianNetwork models for now."
+        )
 
         # download the .Rd file
         filename = dataset_name.split("/")[-1]
@@ -53,25 +55,21 @@ if __name__ == "__main__":
                     f.write(rd_file)
 
         if not (base_dir / "meta_data.json").exists():
+            domains = get_true_domains(pgmpy_model, dataset_name)
             meta_data = {
                 "dataset_description": "null",  # !!!! The description should be added by the user !!!!
                 "field": "null",  # !!!! The field should be added by the user !!!!
                 "features": {
                     feature_name: {
                         "description": "null",  # !!!! The description should be added by the user !!!!
-                        "schema": {"type": "string", "enum": pgmpy_model.states[feature_name]},
+                        "schema": {"type": "string", "enum": domains[feature_name]},
                     }
                     for feature_name in pgmpy_model.nodes()
                 },
             }
 
-            if dataset_name in ["bnrep/tubercolosis"]:
-                meta_data["features"]["Tuberculosis"] = meta_data["features"].pop("Tubercolosis")
-            if dataset_name in ["bnrep/knowledge"]:
-                meta_data["features"]["C#"] = meta_data["features"].pop("C")
-            if dataset_name in ["bnrep/algalactivity1", "bnrep/algalactivity2"]:
-                for feat in meta_data["features"]:
-                    meta_data["features"][feat]["schema"]["enum"] = ["low", "high"]
+            for raw_name, llm_name in get_feature_renames(dataset_name).items():
+                meta_data["features"][llm_name] = meta_data["features"].pop(raw_name)
 
             with open(base_dir / "meta_data.json", "w") as f:
                 json.dump(meta_data, f, indent=4)
@@ -80,9 +78,10 @@ if __name__ == "__main__":
             # Generate data and save as a CSV file
             df = pgmpy_model.simulate(n_samples=args.n_samples, seed=args.seed)
 
-            if dataset_name in ["bnrep/algalactivity1", "bnrep/algalactivity2"]:
+            state_renames = get_state_renames(dataset_name)
+            if state_renames:
                 for col in df.columns:
-                    df[col] = df[col].cat.rename_categories({"0": "low", "1": "high"})
+                    df[col] = df[col].cat.rename_categories(state_renames)
 
             df = df[list(pgmpy_model.nodes())]
             df.to_csv(base_dir / f"data_n{args.n_samples}_sd{args.seed}.csv", index=False)
@@ -97,20 +96,22 @@ if __name__ == "__main__":
 
         if not (base_dir / "cpds.pkl").exists():
             # Save CPDs as a pickle file (dictionary of pandas objects for each node)
+            state_renames = get_state_renames(dataset_name)
+
             def cpd_to_dataframe(cpd: TabularCPD) -> pd.DataFrame | pd.Series:
                 node = cpd.variable
                 try:
                     df_or_series = cpd.to_dataframe()
-                    if dataset_name in ["bnrep/algalactivity1", "bnrep/algalactivity2"]:
+                    if state_renames:
                         df_or_series = df_or_series.rename(  # type: ignore
-                            columns={"0": "low", "1": "high"}, index={"0": "low", "1": "high"}
+                            columns=state_renames, index=state_renames
                         )
                 except ValueError:  # This happens for the root nodes.
                     df_or_series = pd.Series(
                         cpd.values, index=pd.Index(cpd.state_names[node], name=node)
                     )
-                    if dataset_name in ["bnrep/algalactivity1", "bnrep/algalactivity2"]:
-                        df_or_series = df_or_series.rename(index={"0": "low", "1": "high"})
+                    if state_renames:
+                        df_or_series = df_or_series.rename(index=state_renames)
 
                 return df_or_series
 
