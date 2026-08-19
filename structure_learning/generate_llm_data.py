@@ -12,6 +12,7 @@ import pandas as pd
 from priorbot.llm import OpenAICompatLLM
 from priorbot.priors import BarkerGibbsLLMPrior, GamblingGibbsLLMPrior, GibbsLLMPrior, LLMPrior
 
+from structure_learning.pinned_llm import PinnedLLMPrior
 from structure_learning.utils.bn_utils import get_feature_renames
 from structure_learning.utils.llm_data_utils import get_llm_data_run_name
 from structure_learning.utils.misc_utils import DATASETS_DIR, MODEL_NAME_TO_TYPE, load_meta
@@ -134,6 +135,58 @@ def main(args: Namespace) -> None:
                     sweep=args.sweep,
                 )
 
+        case "direct_continuation" | "gibbs_continuation":
+            # Continuation-style conditioning: observed values are pinned first inside the
+            # generation schema (see PinnedLLMPrior), so forced decoding emits them as a
+            # prefix and the resampled features are generated as a continuation of one
+            # natural JSON object.
+
+            def llm_template(schema: dict[str, Any], observed: dict[str, Any] | None = None) -> str:
+                observed = observed or {}
+                variables_to_resample = [
+                    v for v in schema["required"] if v != "reasoning" and v not in observed
+                ]
+
+                dataset_description = get_dataset_description(meta)
+                feature_description = get_feature_description(
+                    meta, list(observed.keys()), variables_to_resample
+                )
+                if args.model_type == "base":
+                    return f"{dataset_description}\n{feature_description}\n[Data point] "
+                else:
+                    ordered_schema = {"type": "object", "properties": {}, "required": []}
+                    for k in list(observed.keys()) + variables_to_resample:
+                        ordered_schema["properties"][k] = full_schema["properties"][k]
+                        ordered_schema["required"].append(k)
+                    ordered_schema_str = json.dumps(ordered_schema)
+                    return (
+                        f"{dataset_description}\n{feature_description}\n"
+                        f"Generate a data point according to the following schema: "
+                        f"{ordered_schema_str}"
+                    )
+
+            llm_prior = PinnedLLMPrior(
+                llm=llm,
+                template=llm_template,
+                manual_reasoning=args.manual_reasoning,
+                feature_schemas=full_schema["properties"],
+            )
+
+            if args.manual_reasoning:
+                llm_prior.reasoning_prompt = llm_prior.reasoning_prompt.replace(
+                    "step-by-step", "brief"
+                )
+            if args.sampling_method == "direct_continuation":
+                prior = llm_prior
+            else:  # gibbs_continuation
+                prior = GibbsLLMPrior(
+                    llm_prior=llm_prior,
+                    burn_in=args.burn_in,
+                    thinning=args.thinning,
+                    block_size=args.block_size,
+                    sweep=args.sweep,
+                )
+
         case "barker_gibbs":
             if args.model_type != "instruct":
                 raise ValueError("Barker prior only supports instruct LLM type")
@@ -161,7 +214,8 @@ def main(args: Namespace) -> None:
                     )
                 else:
                     template = template + (
-                        "Which of the following two options is more likely to be a valid data point? "
+                        "Which of the following two options is more likely to be a "
+                        "valid data point? "
                     )
                 option1_str = json.dumps(option1)
                 option2_str = json.dumps(option2)
@@ -271,7 +325,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sampling_method",
         type=str,
-        choices=["direct", "gibbs", "barker_gibbs", "gambling_gibbs"],
+        choices=[
+            "direct",
+            "gibbs",
+            "direct_continuation",
+            "gibbs_continuation",
+            "barker_gibbs",
+            "gambling_gibbs",
+        ],
         default="gibbs",
     )
     parser.add_argument("--n_chains", type=int, default=1)

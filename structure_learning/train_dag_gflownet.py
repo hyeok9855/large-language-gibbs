@@ -32,7 +32,16 @@ DATASET_PARAMS = {
     "bnrep_consequenceCovid": {"burnin": 150, "thinning": 15, "block_size": 2, "sweep": True},
 }
 
-LLM_DATA_SAMPLING_METHODS = frozenset({"direct", "gibbs", "barker_gibbs", "gambling_gibbs"})
+LLM_DATA_SAMPLING_METHODS = frozenset(
+    {
+        "direct",
+        "gibbs",
+        "direct_continuation",
+        "gibbs_continuation",
+        "barker_gibbs",
+        "gambling_gibbs",
+    }
+)
 
 
 @dataclass(frozen=True)

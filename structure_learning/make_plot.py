@@ -62,7 +62,7 @@ def families_with_results(base: Path) -> list[tuple[str, tuple[str, ...]]]:
 
 
 def to_instruct_method(method: str) -> str:
-    if method in {"direct", "gibbs"}:
+    if method in {"direct", "gibbs", "direct_continuation", "gibbs_continuation"}:
         return f"{method}_instruct"
     return method
 
@@ -84,8 +84,12 @@ METHOD_DISPLAY = {
     "fair": "Fair",
     "direct": "Direct",
     "direct_instruct": "Direct-Inst.",
+    "direct_continuation": "Direct-Cont.",
+    "direct_continuation_instruct": "Direct-Cont.-Inst.",
     "gibbs": "Gibbs",
     "gibbs_instruct": "Gibbs-Inst.",
+    "gibbs_continuation": "Gibbs-Cont.",
+    "gibbs_continuation_instruct": "Gibbs-Cont.-Inst.",
     "barker_gibbs": "Barker-Gibbs",
     "gambling_gibbs": "Gambl.-Gibbs",
 }
@@ -98,8 +102,12 @@ METHOD_ORDER = [
     "fair",
     "direct",
     "direct_instruct",
+    "direct_continuation",
+    "direct_continuation_instruct",
     "gibbs",
     "gibbs_instruct",
+    "gibbs_continuation",
+    "gibbs_continuation_instruct",
     "barker_gibbs",
     "gambling_gibbs",
 ]
@@ -110,8 +118,12 @@ PALETTE = {
     "fair": "#1f77b4",
     "direct": "#ffbb78",
     "direct_instruct": "#aec7e8",
+    "direct_continuation": "#ffbb78",
+    "direct_continuation_instruct": "#aec7e8",
     "gibbs": "#d62728",
     "gibbs_instruct": "#9467bd",
+    "gibbs_continuation": "#d62728",
+    "gibbs_continuation_instruct": "#9467bd",
     "barker_gibbs": "#e377c2",
     "gambling_gibbs": "#98df8a",
 }
@@ -316,8 +328,11 @@ def make_boxplot(
             print(f"{k}: {metric_label}: {np.mean(vals):.3f} ± {np.std(vals):.3f}")
 
     if save_path is not None:
-        fig.savefig(save_path, dpi=200, bbox_inches="tight")
-        print(f"Saved figure to {save_path}")
+        png_path = save_path.with_name(save_path.name + ".png")
+        pdf_path = save_path.with_name(save_path.name + ".pdf")
+        fig.savefig(png_path, dpi=200, bbox_inches="tight")
+        fig.savefig(pdf_path, dpi=200, bbox_inches="tight")
+        print(f"Saved figure to {png_path} and {pdf_path}")
     plt.close(fig)
 
 
@@ -359,8 +374,7 @@ def plot_family(
 
     title = f"{dataset_name.replace('bnrep_', '')}"
     plot_stem = f"boxplot_{family_base}_gamma{gamma}"
-    make_boxplot(grouped, metrics, title=title, save_path=base / f"{plot_stem}.png")
-    make_boxplot(grouped, metrics, title=title, save_path=base / f"{plot_stem}.pdf")
+    make_boxplot(grouped, metrics, title=title, save_path=base / f"{plot_stem}")
 
 
 def main(args):

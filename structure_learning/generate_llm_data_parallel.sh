@@ -5,11 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 mkdir -p "$SCRIPT_DIR/tmp"
 
-PIDFILE="$SCRIPT_DIR/tmp/generate_llm_data.pids"
+# One pid file per invocation ($$ = this shell), so two sweeps sharing this
+# checkout cannot truncate or delete each other's list.
+PIDFILE="$SCRIPT_DIR/tmp/generate_llm_data.$$.pids"
 PIDS=()
 : > "$PIDFILE"
 
-# Ctrl+C kills all launched jobs. From another shell: kill $(cat structure_learning/tmp/generate_llm_data.pids)
+# Ctrl+C kills all launched jobs. From another shell: kill $(cat $PIDFILE)
 trap 'kill "${PIDS[@]}" 2>/dev/null; rm -f "$PIDFILE"; exit 130' INT TERM
 
 launch() {
@@ -18,8 +20,8 @@ launch() {
     echo $! >> "$PIDFILE"
 }
 
-datasets=($1)  # bnrep_tubercolosis bnrep_knowledge bnrep_algalactivity2 bnrep_disputed1 bnrep_consequenceCovid
-sampling_methods=($2)  # direct gibbs barker_gibbs gambling_gibbs
+datasets=($1)  # bnrep_tubercolosis bnrep_knowledge bnrep_algalactivity2 bnrep_gonorrhoeae bnrep_disputed1 bnrep_cardiovascular bnrep_consequenceCovid
+sampling_methods=($2)  # direct gibbs direct_continuation gibbs_continuation barker_gibbs gambling_gibbs
 model_name=$3  # e.g. meta-llama/Llama-3.1-8B, allenai/Olmo-3-32B-Think
 PORT=$4
 manual_reasoning=${5:-false}
@@ -34,11 +36,16 @@ else
 fi
 
 for dataset in ${datasets[@]}; do
-    if [ "$dataset" == "bnrep_disputed1" ] || [ "$dataset" == "bnrep_consequenceCovid" ]; then
-        block_size=2
-    else
-        block_size=1
-    fi
+    # Must match DATASET_PARAMS in train_dag_gflownet.py.
+    case "$dataset" in
+        bnrep_tubercolosis|bnrep_knowledge|bnrep_algalactivity2)
+            block_size=1 ;;
+        bnrep_gonorrhoeae|bnrep_disputed1|bnrep_cardiovascular|bnrep_consequenceCovid)
+            block_size=2 ;;
+        *)
+            echo "Unknown dataset: $dataset (no block_size configured)" >&2
+            exit 1 ;;
+    esac
 
     for sampling_method in ${sampling_methods[@]}; do
         if [ "$sampling_method" == "gambling_gibbs" ]; then
@@ -52,8 +59,10 @@ for dataset in ${datasets[@]}; do
             launch --dataset_name $dataset $ARGS
         done
     done
+    wait
+    PIDS=()
+    : > "$PIDFILE"
 done
-wait
 
 rm -f "$PIDFILE"
 
