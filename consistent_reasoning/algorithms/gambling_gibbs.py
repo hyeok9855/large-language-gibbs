@@ -87,48 +87,41 @@ class CustomGamblingPrior(Prior):
 
         prompt = (
             f"{example['prompt']}\n"
-            f"You will be presented with two options for a data point. One of these is real and the other is fake.\n"
-            f"You have the opportunity to place a bet of ${bet_value} that Option 1 is more plausible, "
-            f"which will pay out $100 if you are correct. Your aim is to maximise profit.\n"
-            f"Option 1: {opt1}\n"
-            f"Option 2: {opt2}\n"
+            f"You will be presented with two options for a data point. One of these is real and "
+            f"the other is fake.\nYou have the opportunity to place a bet of ${bet_value} that "
+            "Option 1 is more plausible, which will pay out $100 if you are correct. Your aim is "
+            f"to maximise profit.\nOption 1: {opt1}\nOption 2: {opt2}\n"
         )
 
-        binary_schema = {
-            "type": "object",
-            "properties": {"bet": {"type": "string", "enum": self._label_choices}},
-            "required": ["bet"],
-        }
-
-        if getattr(self, "manual_reasoning", False):
+        if self.manual_reasoning:
             reasoning_description = (
                 "A brief explanation of the reasoning behind the decision to place a bet or not. "
                 "This should be the first field in the JSON object."
             )
-            binary_schema["properties"] = {
-                "reasoning": {"type": "string", "description": reasoning_description},
-                **binary_schema["properties"],
+            gen_schema = {
+                "type": "object",
+                "properties": {
+                    "reasoning": {"type": "string", "description": reasoning_description},
+                    "bet": {"type": "string", "enum": self._label_choices},
+                },
+                "required": ["reasoning", "bet"],
             }
-            binary_schema["required"] = ["reasoning"] + binary_schema["required"]
-            prompt += (
-                f"Respond with JSON that conforms to this schema: {json.dumps(binary_schema)}."
-            )
+            prompt += f"Respond with JSON that conforms to this schema: {json.dumps(gen_schema)}."
             generate_max_trials = 20
         else:
             prompt += "Respond with 'Place Bet' or 'Do Not Place Bet'."
+            gen_schema = self._label_choices
             generate_max_trials = 10
 
         chosen = self.llm.generate(
             prompt,
-            schema=(
-                binary_schema if getattr(self, "manual_reasoning", False) else self._label_choices
-            ),
+            schema=gen_schema,
             verbose=verbose,
             history=demos,
             max_trials=generate_max_trials,
         )
 
-        if getattr(self, "manual_reasoning", False):
+        if self.manual_reasoning:
             if not isinstance(chosen, dict):
                 raise TypeError(
                     f"Expected a dict from json-constrained generation; got {type(chosen)}"
@@ -261,7 +254,7 @@ def run_gambling_gibbs_search(
     base_prior = CustomGamblingPrior(
         llm=llm,
         demonstrations=demonstrations,
-        manual_reasoning=getattr(args, "manual_reasoning", False),
+        manual_reasoning=args.manual_reasoning,
     )
 
     state = {"step": 0}

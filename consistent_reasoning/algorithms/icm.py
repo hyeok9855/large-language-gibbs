@@ -146,7 +146,7 @@ def get_pipeline(
         max_tokens=1,
     )
 
-    eval_preds = pipeline.add_eval_step(
+    _eval_preds = pipeline.add_eval_step(
         "evaluate",
         calculate_accuracy,
         dependencies=[get_train_preds],
@@ -309,7 +309,11 @@ def run_icm_search(
             )
             if verbose:
                 print(
-                    f"iter = {iter}, pool size = {len(cur_pool)}, cur acc = {cur_metric['train_accuracy']}, new acc = {metric['train_accuracy']}, cur score = {get_energy(cur_metric, args.alpha)}, new score = {get_energy(metric, args.alpha)}"
+                    f"iter = {iter}, pool size = {len(cur_pool)}, "
+                    f"cur acc = {cur_metric['train_accuracy']}, "
+                    f"new acc = {metric['train_accuracy']}, "
+                    f"cur score = {get_energy(cur_metric, args.alpha)}, "
+                    f"new score = {get_energy(metric, args.alpha)}"
                 )
                 print(
                     "cur label distribution = ",

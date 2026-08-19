@@ -3,38 +3,66 @@ import json
 import os
 import random
 from copy import deepcopy
+from pathlib import Path
 
 import numpy as np
 from priorbot.llm import OpenAICompatLLM
 from priorbot.priors import BarkerGibbsLLMPrior, GamblingGibbsLLMPrior, GibbsLLMPrior, LLMPrior
 
-from sampling.utils import MODEL_NAME_TO_TYPE, RESULTS_DIR
+from sampling.continuation_llm import ContinuationOpenAICompatLLM
+from sampling.continuation_prior import ContinuationLLMPrior
+from sampling.targets import TARGETS, get_target
+from sampling.templates import create_continuation_setup, create_template_and_schema
+from sampling.utils import MODEL_NAME_TO_TYPE, RESULTS_DIR, indexed_var_names
+
+
+def _skip_method(method: str, target, args: argparse.Namespace, out_path: Path) -> bool:
+    if method not in args.methods:
+        return True
+
+    if target.is_joint and method in ("indep", "batch"):
+        print(f"Skipping {method}: not defined for joint target {target.name}.")
+        return True
+
+    if "gibbs" in method and target.name == "multinomial" and args.gibbs_block_size < 2:
+        print(
+            f"Skipping {method}: multinomial needs --gibbs_block_size >= 2 "
+            "(single-site updates are degenerate)."
+        )
+        return True
+
+    if "continuation" in method and args.manual_reasoning:
+        print(f"Skipping {method}: --manual_reasoning is not supported for continuation methods.")
+        return True
+
+    if method in ("barker_gibbs", "gambling_gibbs") and args.model_type != "instruct":
+        print(f"Skipping {method}: requires an instruct model.")
+        return True
+
+    if out_path.exists():
+        print(f"Results already exist at {out_path}, skipping...")
+        return True
+
+    return False
 
 
 def main(args: argparse.Namespace):
 
-    if args.target == "uniform":
-        from sampling.templates.uniform import create_template_and_schema
-    elif args.target == "gaussian":
-        from sampling.templates.gaussian import create_template_and_schema
-    else:
-        raise ValueError(f"Invalid target: {args.target}")
+    target = get_target(args.target)
+    kvar_n_samples = args.n_samples if target.is_joint else args.n_samples // args.gibbs_k_vars
 
-    def get_out_dir(args):
-        outdir = RESULTS_DIR / args.target
+    out_dir = (
+        RESULTS_DIR
+        / args.target
+        / target.dir_name(args)
+        / f"{args.model_name.replace('/', '--')}_temp{args.temperature}"
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-        if args.target == "uniform":
-            outdir = outdir / f"min{args.minnum}_max{args.maxnum}"
-        elif args.target == "gaussian":
-            outdir = outdir / f"mean{args.mean}_std{args.std}"
-        else:
-            raise ValueError(f"Invalid target: {args.target}")
-
-        outdir = outdir / f"{args.model_name.replace('/', '--')}_temp{args.temperature}"
-        outdir.mkdir(parents=True, exist_ok=True)
-        return outdir
-
-    out_dir = get_out_dir(args)
+    reasoning_tag = "_reasoning" if args.manual_reasoning else ""
+    kvar_suffix = (
+        f"_k{args.gibbs_k_vars}_b{args.gibbs_block_size}_nc{args.n_chains}_seed{args.seed}.json"
+    )
 
     system_prompt = (
         ""
@@ -50,275 +78,282 @@ def main(args: argparse.Namespace):
     }
 
     # 1. Independent Sampling
-    if "indep" in args.methods:
+    indep_out_path = out_dir / f"independent{reasoning_tag}_seed{args.seed}.json"
+    if not _skip_method("indep", target, args, indep_out_path):
         print("\n--- Running Independent Sampling ---")
-        # Check if the results already exist
-        indep_out_path = (
-            out_dir
-            / f"independent{'_reasoning' if args.manual_reasoning else ''}_seed{args.seed}.json"
+        llm = OpenAICompatLLM(
+            **llm_common_kwargs,
+            temperature=args.temperature,
+            max_tokens=32 + (1024 if args.manual_reasoning else 0),
         )
-        if indep_out_path.exists():
-            print(f"Results already exist at {indep_out_path}, skipping...")
-        else:
-            llm = OpenAICompatLLM(
-                **llm_common_kwargs,
-                temperature=args.temperature,
-                max_tokens=32 + (1024 if args.manual_reasoning else 0),
-            )
-            indep_template, indep_schema = create_template_and_schema("indep", args)
-            indep_prior = LLMPrior(
-                llm=llm,
-                template=indep_template,
-                shuffle_variables=False,
-                manual_reasoning=args.manual_reasoning,
-            )
-            indep_prior.reasoning_prompt = indep_prior.reasoning_prompt.replace(
-                "step-by-step", "brief"
-            )
-            indep_samples = indep_prior.sample_parallel(
-                args.n_samples_per_chain,
-                [indep_schema] * args.n_chains,
-                verbose=args.verbose,
-                pbar=True,
-            )
-            indep_samples = [s["sample"] for s_chain in indep_samples for s in s_chain]
-            with open(indep_out_path, "w") as f:
-                json.dump(indep_samples, f)
-            print(f"Saved {len(indep_samples)} samples to {indep_out_path}")
+        indep_template, indep_schema = create_template_and_schema("indep", args)
+        indep_prior = LLMPrior(
+            llm=llm,
+            template=indep_template,
+            shuffle_variables=False,
+            manual_reasoning=args.manual_reasoning,
+        )
+        indep_prior.reasoning_prompt = indep_prior.reasoning_prompt.replace("step-by-step", "brief")
+        indep_samples = indep_prior.sample_parallel(
+            args.n_samples_per_chain,
+            [indep_schema] * args.n_chains,
+            verbose=args.verbose,
+            pbar=True,
+        )
+        indep_samples = [s["sample"] for s_chain in indep_samples for s in s_chain]
+        with open(indep_out_path, "w") as f:
+            json.dump(indep_samples, f)
+        print(f"Saved {len(indep_samples)} samples to {indep_out_path}")
 
     # 2. Batch Sampling
-    if "batch" in args.methods:
+    batch_out_path = out_dir / f"batch{reasoning_tag}_nc{args.n_chains}_seed{args.seed}.json"
+    if not _skip_method("batch", target, args, batch_out_path):
         print("\n--- Running Batch Sampling ---")
-        # Check if the results already exist
-        batch_out_path = (
-            out_dir
-            / f"batch{'_reasoning' if args.manual_reasoning else ''}_nc{args.n_chains}_seed{args.seed}.json"
+        llm = OpenAICompatLLM(
+            **llm_common_kwargs,
+            temperature=args.temperature,
+            max_tokens=args.n_samples_per_chain * 32 + (1024 if args.manual_reasoning else 0),
         )
-        if batch_out_path.exists():
-            print(f"Results already exist at {batch_out_path}, skipping...")
+        batch_template, batch_schema = create_template_and_schema("batch", args)
+        batch_prior = LLMPrior(
+            llm=llm,
+            template=batch_template,
+            shuffle_variables=False,
+            manual_reasoning=args.manual_reasoning,
+        )
+        batch_prior.reasoning_prompt = batch_prior.reasoning_prompt.replace("step-by-step", "brief")
+        batch_results = batch_prior.sample_parallel(
+            1, [batch_schema] * args.n_chains, verbose=args.verbose, pbar=True
+        )
+
+        batch_samples_flat = []
+        for s_chain in batch_results:
+            batch_samples_flat += s_chain[0]["samples"]
+        batch_samples_flat = batch_samples_flat[: args.n_samples]
+        assert len(batch_samples_flat) == args.n_samples
+
+        with open(batch_out_path, "w") as f:
+            json.dump(batch_samples_flat, f)
+        print(f"Saved {len(batch_samples_flat)} samples to {batch_out_path}")
+
+    # --- Helper functions for saving samples ---
+
+    def save_kvar_samples(path, chain_results):
+        var_names = indexed_var_names(args.gibbs_k_vars)
+
+        if target.is_joint:
+            samples = []
+            for s_chain in chain_results:
+                for sample in s_chain:
+                    samples.append({key: sample[key] for key in var_names})
         else:
-            llm = OpenAICompatLLM(
+            samples = []
+            for s_chain in chain_results:
+                for sample in s_chain:
+                    samples += [sample[key] for key in var_names]
+        samples = samples[: args.n_samples]
+        assert len(samples) == args.n_samples
+        with open(path, "w") as f:
+            json.dump(samples, f)
+        print(f"Saved {len(samples)} samples to {path}")
+
+    def run_one_pass(out_path, *, shuffle_variables, continuation):
+        assert kvar_n_samples % args.n_chains == 0
+        if continuation:
+            llm = ContinuationOpenAICompatLLM(
                 **llm_common_kwargs,
                 temperature=args.temperature,
-                max_tokens=args.n_samples_per_chain * 32 + (1024 if args.manual_reasoning else 0),
+                max_tokens=32,
             )
-            batch_template, batch_schema = create_template_and_schema("batch", args)
-            batch_prior = LLMPrior(
+            template, schema = create_continuation_setup(args)
+            prior = ContinuationLLMPrior(
                 llm=llm,
-                template=batch_template,
-                shuffle_variables=False,
-                manual_reasoning=args.manual_reasoning,
+                template=template,
+                shuffle_variables=shuffle_variables,
             )
-            batch_prior.reasoning_prompt = batch_prior.reasoning_prompt.replace(
-                "step-by-step", "brief"
-            )
-            batch_results = batch_prior.sample_parallel(
-                1, [batch_schema] * args.n_chains, verbose=args.verbose, pbar=True
-            )
-
-            batch_samples_flat = []
-            for s_chain in batch_results:
-                batch_samples_flat += s_chain[0]["samples"]
-            batch_samples_flat = batch_samples_flat[: args.n_samples]
-            assert len(batch_samples_flat) == args.n_samples
-
-            with open(batch_out_path, "w") as f:
-                json.dump(batch_samples_flat, f)
-            print(f"Saved {len(batch_samples_flat)} samples to {batch_out_path}")
-
-    # 3. Direct Sampling (single-pass, random feature order)
-    if "direct" in args.methods:
-        print("\n--- Running Direct Sampling ---")
-        direct_out_path = (
-            out_dir
-            / f"direct{'_reasoning' if args.manual_reasoning else ''}_k{args.gibbs_k_vars}_nc{args.n_chains}_seed{args.seed}.json"
-        )
-        if direct_out_path.exists():
-            print(f"Results already exist at {direct_out_path}, skipping...")
         else:
-            direct_n_samples = args.n_samples // args.gibbs_k_vars
             llm = OpenAICompatLLM(
                 **llm_common_kwargs,
                 temperature=args.temperature,
                 max_tokens=args.gibbs_k_vars * 32 + (1024 if args.manual_reasoning else 0),
             )
-            direct_template, direct_schema = create_template_and_schema("direct", args)
-            direct_prior = LLMPrior(
+            template, schema = create_template_and_schema("direct", args)
+            prior = LLMPrior(
                 llm=llm,
-                template=direct_template,
-                shuffle_variables=True,
+                template=template,
+                shuffle_variables=shuffle_variables,
                 manual_reasoning=args.manual_reasoning,
             )
-            direct_prior.reasoning_prompt = direct_prior.reasoning_prompt.replace(
-                "step-by-step", "brief"
-            )
-            direct_samples = direct_prior.sample_parallel(
-                direct_n_samples // args.n_chains,
-                [deepcopy(direct_schema) for _ in range(args.n_chains)],
-                verbose=args.verbose,
-                pbar=True,
-            )
+            prior.reasoning_prompt = prior.reasoning_prompt.replace("step-by-step", "brief")
 
-            direct_samples_flat = []
-            for s_chain in direct_samples:
-                for s in s_chain:
-                    direct_samples_flat += [s[f"X{i}"] for i in range(args.gibbs_k_vars)]
-            direct_samples_flat = direct_samples_flat[: args.n_samples]
-            assert len(direct_samples_flat) == args.n_samples
+        samples = prior.sample_parallel(
+            kvar_n_samples // args.n_chains,
+            [deepcopy(schema) for _ in range(args.n_chains)],
+            verbose=args.verbose,
+            pbar=True,
+        )
+        save_kvar_samples(out_path, samples)
 
-            with open(direct_out_path, "w") as f:
-                json.dump(direct_samples_flat, f)
-            print(f"Saved {len(direct_samples_flat)} samples to {direct_out_path}")
+    # 3a. Direct Sampling (single-pass, shuffled coordinate order)
+    direct_out_path = (
+        out_dir
+        / f"direct{reasoning_tag}_k{args.gibbs_k_vars}_nc{args.n_chains}_seed{args.seed}.json"
+    )
+    if not _skip_method("direct", target, args, direct_out_path):
+        print("\n--- Running Direct Sampling ---")
+        run_one_pass(direct_out_path, shuffle_variables=True, continuation=False)
+
+    # 3b. Direct-fixed (single-pass, ancestral / schema order X1..Xn)
+    direct_fix_out_path = (
+        out_dir
+        / f"direct_fixed{reasoning_tag}_k{args.gibbs_k_vars}_nc{args.n_chains}_seed{args.seed}.json"
+    )
+    if not _skip_method("direct_fixed", target, args, direct_fix_out_path):
+        print("\n--- Running Direct-fixed Sampling ---")
+        run_one_pass(direct_fix_out_path, shuffle_variables=False, continuation=False)
+
+    # 3c. Direct continuation (field-by-field, shuffled coordinate order)
+    direct_conti_out_path = (
+        out_dir / f"direct_continuation_k{args.gibbs_k_vars}_nc{args.n_chains}_seed{args.seed}.json"
+    )
+    if not _skip_method("direct_continuation", target, args, direct_conti_out_path):
+        print("\n--- Running Direct Continuation Sampling ---")
+        run_one_pass(direct_conti_out_path, shuffle_variables=True, continuation=True)
+
+    # 3d. Direct-fixed continuation (field-by-field, ancestral order)
+    direct_fixconti_out_path = (
+        out_dir
+        / f"direct_fixed_continuation_k{args.gibbs_k_vars}_nc{args.n_chains}_seed{args.seed}.json"
+    )
+    if not _skip_method("direct_fixed_continuation", target, args, direct_fixconti_out_path):
+        print("\n--- Running Direct-fixed Continuation Sampling ---")
+        run_one_pass(direct_fixconti_out_path, shuffle_variables=False, continuation=True)
 
     # 4. Gibbs Sampling
-    if "gibbs" in args.methods:
+    gibbs_out_path = out_dir / f"gibbs{reasoning_tag}{kvar_suffix}"
+    if not _skip_method("gibbs", target, args, gibbs_out_path):
         print("\n--- Running Gibbs Sampling ---")
-        # Check if the results already exist
-        gibbs_out_path = (
-            out_dir
-            / f"gibbs{'_reasoning' if args.manual_reasoning else ''}_k{args.gibbs_k_vars}_b{args.gibbs_block_size}_nc{args.n_chains}_seed{args.seed}.json"
+        llm = OpenAICompatLLM(
+            **llm_common_kwargs,
+            temperature=args.temperature,
+            max_tokens=args.gibbs_k_vars * 32 + (1024 if args.manual_reasoning else 0),
         )
-        if gibbs_out_path.exists():
-            print(f"Results already exist at {gibbs_out_path}, skipping...")
-        else:
-            gibbs_n_samples = args.n_samples // args.gibbs_k_vars
-            llm = OpenAICompatLLM(
-                **llm_common_kwargs,
-                temperature=args.temperature,
-                max_tokens=args.gibbs_k_vars * 32 + (1024 if args.manual_reasoning else 0),
-            )
 
-            gibbs_template, gibbs_schema = create_template_and_schema("gibbs", args)
-            llm_prior = LLMPrior(
-                llm=llm,
-                template=gibbs_template,
-                manual_reasoning=args.manual_reasoning,
-            )
-            llm_prior.reasoning_prompt = llm_prior.reasoning_prompt.replace("step-by-step", "brief")
-            gibbs_prior = GibbsLLMPrior(
-                llm_prior=llm_prior,
-                burn_in=args.burn_in,
-                thinning=args.thinning,
-                block_size=args.gibbs_block_size,
-                sweep=args.sweep,
-            )
-            gibbs_samples = gibbs_prior.sample_parallel(
-                gibbs_n_samples // args.n_chains,
-                [gibbs_schema] * args.n_chains,
-                verbose=args.verbose,
-                pbar=True,
-            )
+        gibbs_template, gibbs_schema = create_template_and_schema("gibbs", args)
+        llm_prior = LLMPrior(
+            llm=llm,
+            template=gibbs_template,
+            manual_reasoning=args.manual_reasoning,
+        )
+        llm_prior.reasoning_prompt = llm_prior.reasoning_prompt.replace("step-by-step", "brief")
+        gibbs_prior = GibbsLLMPrior(
+            llm_prior=llm_prior,
+            burn_in=args.burn_in,
+            thinning=args.thinning,
+            block_size=args.gibbs_block_size,
+            sweep=args.sweep,
+        )
+        assert kvar_n_samples % args.n_chains == 0
+        gibbs_samples = gibbs_prior.sample_parallel(
+            kvar_n_samples // args.n_chains,
+            [gibbs_schema] * args.n_chains,
+            verbose=args.verbose,
+            pbar=True,
+        )
+        save_kvar_samples(gibbs_out_path, gibbs_samples)
 
-            # flatten the structure
-            gibbs_samples_flat = []
-            for s_chain in gibbs_samples:
-                for s in s_chain:
-                    gibbs_samples_flat += [s[f"X{i}"] for i in range(args.gibbs_k_vars)]
-            gibbs_samples_flat = gibbs_samples_flat[: args.n_samples]
-            assert len(gibbs_samples_flat) == args.n_samples
-
-            with open(gibbs_out_path, "w") as f:
-                json.dump(gibbs_samples_flat, f)
-            print(f"Saved {len(gibbs_samples_flat)} samples to {gibbs_out_path}")
+    # 4b. Gibbs with JSON continuation (field-by-field; base via completions, instruct via prefill)
+    gibbs_conti_out_path = out_dir / f"gibbs_continuation{kvar_suffix}"
+    if not _skip_method("gibbs_continuation", target, args, gibbs_conti_out_path):
+        print("\n--- Running Gibbs Continuation Sampling ---")
+        llm = ContinuationOpenAICompatLLM(
+            **llm_common_kwargs,
+            temperature=args.temperature,
+            max_tokens=32,
+        )
+        continuation_template, gibbs_schema = create_continuation_setup(args)
+        continuation_prior = ContinuationLLMPrior(
+            llm=llm,
+            template=continuation_template,
+            shuffle_variables=True,
+        )
+        gibbs_prior = GibbsLLMPrior(
+            llm_prior=continuation_prior,
+            burn_in=args.burn_in,
+            thinning=args.thinning,
+            block_size=args.gibbs_block_size,
+            sweep=args.sweep,
+        )
+        assert kvar_n_samples % args.n_chains == 0
+        gibbs_continuation_samples = gibbs_prior.sample_parallel(
+            kvar_n_samples // args.n_chains,
+            [gibbs_schema] * args.n_chains,
+            verbose=args.verbose,
+            pbar=True,
+        )
+        save_kvar_samples(gibbs_conti_out_path, gibbs_continuation_samples)
 
     # 5. Barker-Gibbs Sampling
-    if "barker" in args.methods:
+    barker_out_path = out_dir / f"barkergibbs{reasoning_tag}{kvar_suffix}"
+    if not _skip_method("barker_gibbs", target, args, barker_out_path):
         print("\n--- Running Barker-Gibbs Sampling ---")
-        barker_out_path = (
-            out_dir
-            / f"barkergibbs{'_reasoning' if args.manual_reasoning else ''}_k{args.gibbs_k_vars}_b{args.gibbs_block_size}_nc{args.n_chains}_seed{args.seed}.json"
+        llm = OpenAICompatLLM(
+            **llm_common_kwargs,
+            temperature=1.0,
+            max_tokens=32 + (1024 if args.manual_reasoning else 0),
         )
-        if barker_out_path.exists():
-            print(f"Results already exist at {barker_out_path}, skipping...")
-        elif args.model_type != "instruct":
-            # Base models can't reliably follow the JSON-choice schema used by the acceptance step.
-            print("Barker-Gibbs requires an instruct model, skipping...")
-        else:
-            gibbs_n_samples = args.n_samples // args.gibbs_k_vars
-            llm = OpenAICompatLLM(
-                **llm_common_kwargs,
-                temperature=1.0,
-                max_tokens=32 + (1024 if args.manual_reasoning else 0),
-            )
-            barker_template, gibbs_schema = create_template_and_schema("barker", args)
-            barker_gibbs_prior = BarkerGibbsLLMPrior(
-                llm=llm,
-                template=barker_template,
-                burn_in=args.burn_in,
-                thinning=args.thinning * 2,  # *2 because samples can be rejected
-                manual_reasoning=args.manual_reasoning,
-                block_size=args.gibbs_block_size,
-                sweep=args.sweep,
-            )
-            barker_gibbs_prior.reasoning_prompt = barker_gibbs_prior.reasoning_prompt.replace(
-                "step-by-step", "brief"
-            )
-            barker_samples = barker_gibbs_prior.sample_parallel(
-                gibbs_n_samples // args.n_chains,
-                [gibbs_schema] * args.n_chains,
-                verbose=args.verbose,
-                pbar=True,
-            )
-
-            barker_samples_flat = []
-            for s_chain in barker_samples:
-                for s in s_chain:
-                    barker_samples_flat += [s[f"X{i}"] for i in range(args.gibbs_k_vars)]
-            barker_samples_flat = barker_samples_flat[: args.n_samples]
-            assert len(barker_samples_flat) == args.n_samples
-
-            with open(barker_out_path, "w") as f:
-                json.dump(barker_samples_flat, f)
-            print(f"Saved {len(barker_samples_flat)} samples to {barker_out_path}")
+        barker_template, gibbs_schema = create_template_and_schema("barker_gibbs", args)
+        barker_gibbs_prior = BarkerGibbsLLMPrior(
+            llm=llm,
+            template=barker_template,
+            burn_in=args.burn_in,
+            thinning=args.thinning * 2,  # *2 because samples can be rejected
+            manual_reasoning=args.manual_reasoning,
+            block_size=args.gibbs_block_size,
+            sweep=args.sweep,
+        )
+        barker_gibbs_prior.reasoning_prompt = barker_gibbs_prior.reasoning_prompt.replace(
+            "step-by-step", "brief"
+        )
+        assert kvar_n_samples % args.n_chains == 0
+        barker_samples = barker_gibbs_prior.sample_parallel(
+            kvar_n_samples // args.n_chains,
+            [gibbs_schema] * args.n_chains,
+            verbose=args.verbose,
+            pbar=True,
+        )
+        save_kvar_samples(barker_out_path, barker_samples)
 
     # 6. Gambling-Gibbs Sampling
-    if "gambling" in args.methods:
+    gambling_out_path = out_dir / f"gamblinggibbs{reasoning_tag}{kvar_suffix}"
+    if not _skip_method("gambling_gibbs", target, args, gambling_out_path):
         print("\n--- Running Gambling-Gibbs Sampling ---")
-        gambling_out_path = (
-            out_dir
-            / f"gamblinggibbs{'_reasoning' if args.manual_reasoning else ''}_k{args.gibbs_k_vars}_b{args.gibbs_block_size}_nc{args.n_chains}_seed{args.seed}.json"
+        llm = OpenAICompatLLM(
+            **llm_common_kwargs,
+            temperature=0.0 if not args.manual_reasoning else 1.0,
+            max_tokens=32 + (1024 if args.manual_reasoning else 0),
         )
-        if gambling_out_path.exists():
-            print(f"Results already exist at {gambling_out_path}, skipping...")
-        elif args.model_type != "instruct":
-            print("Gambling-Gibbs requires an instruct model, skipping...")
-        else:
-            gibbs_n_samples = args.n_samples // args.gibbs_k_vars
-            llm = OpenAICompatLLM(
-                **llm_common_kwargs,
-                temperature=0.0 if not args.manual_reasoning else 1.0,
-                max_tokens=32 + (1024 if args.manual_reasoning else 0),
-            )
-            gambling_template, gibbs_schema = create_template_and_schema("gambling", args)
-            gambling_gibbs_prior = GamblingGibbsLLMPrior(
-                llm=llm,
-                burn_in=args.burn_in,
-                thinning=args.thinning * 2,  # *2 because samples can be rejected
-                block_size=args.gibbs_block_size,
-                sweep=args.sweep,
-                manual_reasoning=args.manual_reasoning,
-                template=gambling_template,
-            )
-            gambling_gibbs_prior.reasoning_prompt = gambling_gibbs_prior.reasoning_prompt.replace(
-                "step-by-step", "brief"
-            )
-            gambling_samples = gambling_gibbs_prior.sample_parallel(
-                gibbs_n_samples // args.n_chains,
-                [gibbs_schema] * args.n_chains,
-                verbose=args.verbose,
-                pbar=True,
-            )
-
-            gambling_samples_flat = []
-            for s_chain in gambling_samples:
-                for s in s_chain:
-                    gambling_samples_flat += [s[f"X{i}"] for i in range(args.gibbs_k_vars)]
-            gambling_samples_flat = gambling_samples_flat[: args.n_samples]
-            assert len(gambling_samples_flat) == args.n_samples
-
-            with open(gambling_out_path, "w") as f:
-                json.dump(gambling_samples_flat, f)
-            print(f"Saved {len(gambling_samples_flat)} samples to {gambling_out_path}")
+        gambling_template, gibbs_schema = create_template_and_schema("gambling_gibbs", args)
+        gambling_gibbs_prior = GamblingGibbsLLMPrior(
+            llm=llm,
+            burn_in=args.burn_in,
+            thinning=args.thinning * 2,  # *2 because samples can be rejected
+            block_size=args.gibbs_block_size,
+            sweep=args.sweep,
+            manual_reasoning=args.manual_reasoning,
+            template=gambling_template,
+        )
+        gambling_gibbs_prior.reasoning_prompt = gambling_gibbs_prior.reasoning_prompt.replace(
+            "step-by-step", "brief"
+        )
+        assert kvar_n_samples % args.n_chains == 0
+        gambling_samples = gambling_gibbs_prior.sample_parallel(
+            kvar_n_samples // args.n_chains,
+            [gibbs_schema] * args.n_chains,
+            verbose=args.verbose,
+            pbar=True,
+        )
+        save_kvar_samples(gambling_out_path, gambling_samples)
 
 
 if __name__ == "__main__":
@@ -329,7 +364,7 @@ if __name__ == "__main__":
         "--target",
         type=str,
         default="gaussian",
-        choices=["gaussian", "uniform"],  # uniform is discrete
+        choices=sorted(TARGETS),  # discrete: uniform, binomial, poisson, multinomial
     )
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B")
     parser.add_argument(
@@ -338,21 +373,19 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--api_key", type=str, default="NOT_A_KEY")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--n_samples", type=int, default=256)
-
-    # Gaussian distribution parameters
-    parser.add_argument("--mean", type=float, default=0.0)
-    parser.add_argument("--std", type=float, default=1.0)
     parser.add_argument(
-        "--mcmc_sigma_multiplier",
-        type=float,
-        default=4.0,
-        help="Multiplier of the standard deviation of the Gaussian distribution to bound the sampling space.",
+        "--n_samples",
+        type=int,
+        default=256,
+        help=(
+            "Number of scalar draws for univariate targets, or number of joint vectors "
+            "for random_walk and multinomial."
+        ),
     )
 
-    # Uniform distribution parameters
-    parser.add_argument("--minnum", type=int, default=0)
-    parser.add_argument("--maxnum", type=int, default=99)
+    # Target distribution parameters; each target contributes its own.
+    for _target in TARGETS.values():
+        _target.add_arguments(parser)
 
     # LLM parameters
     parser.add_argument("--temperature", type=float, default=1.0)
@@ -361,10 +394,17 @@ if __name__ == "__main__":
         "--gibbs_block_size",
         type=int,
         default=4,
-        help="Block size for Gibbs sampling.",
+        help="Block size for Gibbs sampling. The multinomial target requires >= 2.",
     )
     parser.add_argument(
-        "--gibbs_k_vars", type=int, default=16, help="Number of variables for Gibbs sampling."
+        "--gibbs_k_vars",
+        type=int,
+        default=16,
+        help=(
+            "Number of coordinates. For univariate targets these are iid copies; "
+            "for joint targets this is the dimension (8 in the default random walk "
+            "and multinomial setups)."
+        ),
     )
     parser.add_argument("--burn_in", type=int, default=None)
     parser.add_argument("--thinning", type=int, default=None)
@@ -374,8 +414,30 @@ if __name__ == "__main__":
     parser.add_argument(
         "--methods",
         nargs="+",
-        choices=["indep", "batch", "direct", "gibbs", "barker", "gambling"],
-        default=["indep", "batch", "direct", "gibbs", "barker", "gambling"],
+        choices=[
+            "indep",
+            "batch",
+            "direct",
+            "direct_fixed",
+            "direct_continuation",
+            "direct_fixed_continuation",
+            "gibbs",
+            "gibbs_continuation",
+            "barker_gibbs",
+            "gambling_gibbs",
+        ],
+        default=[
+            "indep",
+            "batch",
+            "direct",
+            "direct_fixed",
+            "direct_continuation",
+            "direct_fixed_continuation",
+            "gibbs",
+            "gibbs_continuation",
+            "barker_gibbs",
+            "gambling_gibbs",
+        ],
     )
 
     parser.add_argument("--verbose", action="store_true")
@@ -387,6 +449,9 @@ if __name__ == "__main__":
         args.base_url = f"http://localhost:{args.port}/v1"
 
     os.environ["OPENAI_API_KEY"] = args.api_key
+
+    target = get_target(args.target)
+    target.validate(args)
 
     if args.thinning is None:
         args.thinning = (args.gibbs_k_vars // args.gibbs_block_size) * 2
@@ -404,7 +469,7 @@ if __name__ == "__main__":
         )
     args.n_samples_per_chain = args.n_samples // args.n_chains
 
-    if any(m in args.methods for m in ("direct", "gibbs", "barker", "gambling")):
+    if not target.is_joint:
         if args.n_samples % args.gibbs_k_vars != 0:
             raise ValueError(
                 f"n_samples ({args.n_samples}) must be divisible by "

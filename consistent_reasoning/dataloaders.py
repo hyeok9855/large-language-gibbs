@@ -3,7 +3,6 @@ import random
 from pathlib import Path
 from typing import Any
 
-
 CONSISTENT_REASONING_DIR = Path(__file__).parent
 
 

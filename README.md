@@ -29,7 +29,7 @@ This experiment queries an OpenAI-compatible chat/completions API.
 - Local server: pass `--port`; the script uses `http://localhost:<port>/v1`.
 - Remote server: pass both `--base_url` and `--api_key`.
 
-Known model names are listed in `utils.py`; if your model is not listed, you should add it to the dictionary.
+Known model names are listed in `sampling/utils.py`; if your model is not listed, you should add it to the dictionary.
 
 ### Usage
 
@@ -50,7 +50,7 @@ Existing result files are not overwritten; matching runs are skipped.
 
 `run_parallel.sh` launches experiments for multiple methods and seeds in parallel: independent, batch, direct, Gibbs with block sizes 1 and 4, and Barker/Gambling variants (only when using an instruct model). For example (5 seeds):
 ```bash
-bash sampling/run_parallel.sh gaussian meta-llama/Llama-3.1-8B 8000 5
+bash sampling/run_parallel.sh meta-llama/Llama-3.1-8B 8000 5
 ```
 
 The script starts many jobs concurrently, so make sure the backing API server can handle the requested load.

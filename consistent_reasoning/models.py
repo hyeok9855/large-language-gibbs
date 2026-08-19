@@ -306,7 +306,8 @@ class ModelAPI:
 
         if response_data is None:
             raise RuntimeError(
-                f"API call failed after {max_attempts_per_api_call} attempts. Last error: {last_err}"
+                f"API call failed after {max_attempts_per_api_call} attempts. "
+                f"Last error: {last_err}"
             )
 
         t_duration = time.time() - t_start

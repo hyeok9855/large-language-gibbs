@@ -6,7 +6,20 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+from sampling.targets import TARGETS, get_target
+from sampling.utils import indexed_var_names
+
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
+
+
+def _multinomial_sum_caption(samples, params):
+    if not samples or not isinstance(samples[0], dict):
+        return None
+    names = indexed_var_names(params["n_vars"])
+    n_trials = params["n_trials"]
+    totals = [sum(float(sample[name]) for name in names) for sample in samples]
+    frac = float(np.mean(np.isclose(totals, n_trials)))
+    return f"P(sum={n_trials})={frac:.3f}, mean sum={np.mean(totals):.2f}"
 
 
 # Display order and labels for methods. Each entry is a regex matching the raw
@@ -16,23 +29,42 @@ METHOD_DISPLAY_PATTERNS = [
     (re.compile(r"^independent(?:_reasoning)?$"), "Independent"),
     (re.compile(r"^batch(?:_reasoning)?(?:_nc\d+)?$"), "Batch"),
     (
-        re.compile(r"^direct(?:_reasoning)?_k\d+(?:_nc\d+)?$"),
-        "Direct",
-    ),
-    (re.compile(r"^gibbs(?:_reasoning)?_k\d+_b(?P<b>\d+)(?:_nc\d+)?$"), "Gibbs (B={b})"),
-    (
-        re.compile(r"^barkergibbs(?:_reasoning)?_k\d+_b(?P<b>\d+)(?:_nc\d+)?$"),
-        "Barker-Gibbs (B={b})",
+        re.compile(r"^direct(?:_reasoning)?_k(?P<k>\d+)(?:_nc\d+)?$"),
+        "Direct (K={k})",
     ),
     (
-        re.compile(r"^gamblinggibbs(?:_reasoning)?_k\d+_b(?P<b>\d+)(?:_nc\d+)?$"),
-        "Gambling-Gibbs (B={b})",
+        re.compile(r"^direct_fixed(?:_reasoning)?_k(?P<k>\d+)(?:_nc\d+)?$"),
+        "Direct-fixed (K={k})",
+    ),
+    (
+        re.compile(r"^direct_continuation_k(?P<k>\d+)(?:_nc\d+)?$"),
+        "Direct-conti. (K={k})",
+    ),
+    (
+        re.compile(r"^direct_fixed_continuation_k(?P<k>\d+)(?:_nc\d+)?$"),
+        "Direct-fixed-conti. (K={k})",
+    ),
+    (
+        re.compile(r"^gibbs(?:_reasoning)?_k(?P<k>\d+)_b(?P<b>\d+)(?:_nc\d+)?$"),
+        "Gibbs (K={k}, B={b})",
+    ),
+    (
+        re.compile(r"^gibbs_continuation_k(?P<k>\d+)_b(?P<b>\d+)(?:_nc\d+)?$"),
+        "Gibbs-conti. (K={k}, B={b})",
+    ),
+    (
+        re.compile(r"^barkergibbs(?:_reasoning)?_k(?P<k>\d+)_b(?P<b>\d+)(?:_nc\d+)?$"),
+        "Barker-Gibbs (K={k}, B={b})",
+    ),
+    (
+        re.compile(r"^gamblinggibbs(?:_reasoning)?_k(?P<k>\d+)_b(?P<b>\d+)(?:_nc\d+)?$"),
+        "Gambling-Gibbs (K={k}, B={b})",
     ),
 ]
 
 
 def get_method_display(method):
-    """Return ((primary_order, secondary_order), display_label) for a method.
+    """Return ((primary_order, k, b), display_label) for a method.
 
     Methods not matching any known pattern sort to the end alphabetically and
     fall back to their raw name as the label.
@@ -42,9 +74,10 @@ def get_method_display(method):
         if m:
             groups = m.groupdict()
             label = label_template.format(**groups) if groups else label_template
-            secondary = int(groups["b"]) if "b" in groups else 0
-            return (order, secondary), label
-    return (len(METHOD_DISPLAY_PATTERNS), 0), method
+            k = int(groups["k"]) if groups.get("k") else 0
+            b = int(groups["b"]) if groups.get("b") else 0
+            return (order, k, b), label
+    return (len(METHOD_DISPLAY_PATTERNS), 0, 0), method
 
 
 def matches_method_display_pattern(method):
@@ -72,21 +105,10 @@ def parse_filename(filename):
     return method, seed
 
 
-NUMBER_PATTERN = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
-
-
-def parse_parameter_dir(target, dirname):
-    if target == "uniform":
-        match = re.fullmatch(r"min(-?\d+)_max(-?\d+)", dirname)
-        if match:
-            minnum = int(match.group(1))
-            maxnum = int(match.group(2))
-            return {"minnum": minnum, "maxnum": maxnum}
-    elif target == "gaussian":
-        match = re.fullmatch(rf"mean({NUMBER_PATTERN})_std({NUMBER_PATTERN})", dirname)
-        if match:
-            return {"mean": float(match.group(1)), "std": float(match.group(2))}
-    return None
+def parse_parameter_dir(target_name, dirname):
+    if target_name not in TARGETS:
+        return None
+    return get_target(target_name).parse_dir_name(dirname)
 
 
 def parse_args():
@@ -139,17 +161,8 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
     if not methods:
         return
 
-    if target_name == "uniform":
-        minnum = params["minnum"]
-        maxnum = params["maxnum"]
-        n_bins = min(50, maxnum - minnum + 1)
-        bin_edges = np.linspace(minnum, maxnum, n_bins + 1)
-    elif target_name == "gaussian":
-        mean = params["mean"]
-        std = params["std"]
-        n_bins = 50
-        bin_edges = np.linspace(mean - 4 * std, mean + 4 * std, n_bins + 1)
-
+    target = get_target(target_name)
+    bin_edges = target.bin_edges(params)
     bin_widths = np.diff(bin_edges)
 
     fig, axes = plt.subplots(
@@ -178,7 +191,7 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
         plotted_seeds = []
         max_abs_acfs = []
         for seed in seeds:
-            data = method_data[method][seed]
+            data = target.mixing_values(method_data[method][seed], params)
             n = len(data)
             if n < 2:
                 continue
@@ -239,7 +252,7 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
 
         histograms = []
         for seed in seeds:
-            data = method_data[method][seed]
+            data = target.histogram_values(method_data[method][seed], params)
             counts, _ = np.histogram(data, bins=bin_edges, density=True)
             histograms.append(counts)
 
@@ -263,21 +276,9 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
             label="Empirical Mean",
         )
 
-        if target_name == "uniform":
-            true_density = 1.0 / (params["maxnum"] - params["minnum"] + 1)
-
-            ax.axhline(
-                y=true_density,
-                color="r",
-                linestyle="--",
-                label="True Distribution",
-            )
-            ax.set_xlim(minnum, maxnum)
-        elif target_name == "gaussian":
-            x_vals = np.linspace(mean - 4 * std, mean + 4 * std, 200)
-            y_vals = (1 / (std * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x_vals - mean) / std) ** 2)
-            ax.plot(x_vals, y_vals, color="r", linestyle="--", label="True Gaussian")
-            ax.set_xlim(mean - 4 * std, mean + 4 * std)
+        ref_x, ref_y = target.reference(params)
+        ax.plot(ref_x, ref_y, color="r", linestyle="--", label="True Distribution")
+        ax.set_xlim(*target.xlim(params))
 
         if idx == 0:
             ax.set_ylabel("Empirical Density", fontsize=20)
@@ -298,6 +299,22 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
             color="black",
             backgroundcolor="lightgray",
         )
+
+        if target.name == "multinomial":
+            raw = [sample for seed in seeds for sample in method_data[method][seed]]
+            diag = _multinomial_sum_caption(raw, params)
+            if diag:
+                print(f"{label}: {diag}")
+                ax.text(
+                    0.50,
+                    0.02,
+                    diag,
+                    transform=ax.transAxes,
+                    ha="center",
+                    va="bottom",
+                    fontsize=11,
+                    color="black",
+                )
 
         ax.grid(axis="y", linestyle="--", alpha=0.7)
 

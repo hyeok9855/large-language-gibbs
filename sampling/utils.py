@@ -16,3 +16,8 @@ RESULTS_DIR = Path(__file__).parent / "results"
 
 def round_dict(d, precision=2):
     return {k: round(v, precision) for k, v in d.items()}
+
+
+def indexed_var_names(n_vars: int) -> list[str]:
+    """Coordinate names X1, ..., Xn."""
+    return [f"X{i}" for i in range(1, n_vars + 1)]
