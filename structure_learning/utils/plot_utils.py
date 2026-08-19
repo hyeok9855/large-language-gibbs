@@ -1,9 +1,9 @@
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from matplotlib.figure import Figure
-from statsmodels.graphics.mosaicplot import mosaic
 from sklearn.metrics import mutual_info_score
+from statsmodels.graphics.mosaicplot import mosaic
 
 
 def visualise_discrete_dataset(

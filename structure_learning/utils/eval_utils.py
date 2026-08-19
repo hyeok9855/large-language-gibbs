@@ -5,7 +5,6 @@ https://github.com/tristandeleu/jax-dag-gflownet/blob/master/dag_gflownet/utils/
 """
 
 import numpy as np
-
 from sklearn import metrics
 
 

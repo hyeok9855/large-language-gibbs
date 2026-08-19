@@ -1,7 +1,7 @@
 from itertools import permutations
 
-import numpy as np
 import networkx as nx
+import numpy as np
 
 
 def _s(node1, node2):

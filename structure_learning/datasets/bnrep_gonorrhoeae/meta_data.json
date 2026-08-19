@@ -1,0 +1,109 @@
+{
+    "dataset_description": "A dataset of discrete variables influencing Neisseria gonorrhoeae antibiotic susceptibility test (AST) initiation in Australia, collected from 2002 to 2022.",
+    "field": "public health",
+    "features": {
+        "ASTTest": {
+            "description": "Antibiotic susceptibility test initiation status ( \"Initiated\" | \"Not initiated\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Initiated",
+                    "Not initiated"
+                ]
+            }
+        },
+        "ClinicianExperience": {
+            "description": "Clinical experience of the clinician with sexual health ( \"Experienced\" | \"Unexperienced\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Experienced",
+                    "Unexperienced"
+                ]
+            }
+        },
+        "EpidemiologicalFactors": {
+            "description": "Population level epidemiological risk factors ( \"High Risk Group\" | \"Low Risk Group\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "High Risk Group",
+                    "Low Risk Group"
+                ]
+            }
+        },
+        "InitialTreatmentFailure": {
+            "description": "Status of initial treatment outcome ( \"Treatment success\" | \"Treatment failure\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Treatment success",
+                    "Treatment failure"
+                ]
+            }
+        },
+        "MedicationAdherence": {
+            "description": "Individual level medication adherence ( \"Proper Adherence\" | \"Improper Adherence\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Proper Adherence",
+                    "Improper Adherence"
+                ]
+            }
+        },
+        "NumberPartners": {
+            "description": "Number of sexual partners an individual presents with ( \"One\" | \"Two to five\" | \"More than six\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "One",
+                    "Two to five",
+                    "More than six"
+                ]
+            }
+        },
+        "PastDiagnoses": {
+            "description": "Number of past diagnoses an individual presents with ( \"One\" | \"Two to four\" | \"Five to nine\" | \"More than ten\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "One",
+                    "Two to four",
+                    "Five to nine",
+                    "More than ten"
+                ]
+            }
+        },
+        "PersistingSymptoms": {
+            "description": "Individual level persistence of symptoms ( \"Symptoms persist\" | \"Symptoms resolve\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Symptoms persist",
+                    "Symptoms resolve"
+                ]
+            }
+        },
+        "SexualOrientation": {
+            "description": "Sexual orientation of the individual ( \"Heterosexual\" | \"Homosexual\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Heterosexual",
+                    "Homosexual"
+                ]
+            }
+        },
+        "UnpromptedTest": {
+            "description": "Unprompted test accounting for the possibility of a test being initiated regardless of any factors ( \"Initiated\" | \"Not initiated\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Initiated",
+                    "Not initiated"
+                ]
+            }
+        }
+    }
+}

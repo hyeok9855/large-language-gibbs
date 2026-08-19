@@ -57,11 +57,11 @@ if __name__ == "__main__":
         if not (base_dir / "meta_data.json").exists():
             domains = get_true_domains(pgmpy_model, dataset_name)
             meta_data = {
-                "dataset_description": "null",  # !!!! The description should be added by the user !!!!
-                "field": "null",  # !!!! The field should be added by the user !!!!
+                "dataset_description": "null",  # !! The description should be added by the user !!
+                "field": "null",  # !! The field should be added by the user !!
                 "features": {
                     feature_name: {
-                        "description": "null",  # !!!! The description should be added by the user !!!!
+                        "description": "null",  # !! The description should be added by the user !!
                         "schema": {"type": "string", "enum": domains[feature_name]},
                     }
                     for feature_name in pgmpy_model.nodes()

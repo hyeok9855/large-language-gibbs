@@ -5,7 +5,8 @@ from jax import nn
 
 class LinearMultiHeadAttention(hk.MultiHeadAttention):
     def __call__(self, query, key, value, mask=None):
-        feature_map = lambda x: nn.elu(x) + 1.0
+        def feature_map(x):
+            return nn.elu(x) + 1.0
         eps = 1e-6
 
         query_heads = self._linear_projection(query, self.key_size, "query")

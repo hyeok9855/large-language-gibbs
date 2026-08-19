@@ -1,0 +1,146 @@
+{
+    "dataset_description": "A dataset of discrete variables for predicting cardiovascular risk, collected from annual health assessments of adult workers affiliated with a private insurance provider in Spain from 2012 to 2016.",
+    "field": "public health",
+    "features": {
+        "Age": {
+            "description": "Age in years ( \"18-24\" | \"24-34\" | \"34-44\" | \"44-54\" | \"54-64\" | \"64-74\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "18-24",
+                    "24-34",
+                    "34-44",
+                    "44-54",
+                    "54-64",
+                    "64-74"
+                ]
+            }
+        },
+        "Anxiety": {
+            "description": "Clinical diagnosis of anxiety ( \"No\" | \"Yes\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "No",
+                    "Yes"
+                ]
+            }
+        },
+        "BodyMassIndex": {
+            "description": "Body mass index class ( \"Normal\" | \"Obese\" | \"Overweight\" | \"Underweight\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Normal",
+                    "Obese",
+                    "Overweight",
+                    "Underweight"
+                ]
+            }
+        },
+        "Depression": {
+            "description": "Clinical diagnosis of depression ( \"No\" | \"Yes\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "No",
+                    "Yes"
+                ]
+            }
+        },
+        "Diabetes": {
+            "description": "Clinical diagnosis of diabetes ( \"No\" | \"Yes\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "No",
+                    "Yes"
+                ]
+            }
+        },
+        "EducationLevel": {
+            "description": "Education level ( \"1\" | \"2\" | \"3\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "1",
+                    "2",
+                    "3"
+                ]
+            }
+        },
+        "Hypercholesterolemia": {
+            "description": "Clinical diagnosis of hypercholesterolemia ( \"No\" | \"Yes\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "No",
+                    "Yes"
+                ]
+            }
+        },
+        "Hypertension": {
+            "description": "Clinical diagnosis of hypertension ( \"No\" | \"Yes\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "No",
+                    "Yes"
+                ]
+            }
+        },
+        "PhysicalActivity": {
+            "description": "Leisure-time physical activity level ( \"Insufficiently Active\" | \"Regularly Active\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Insufficiently Active",
+                    "Regularly Active"
+                ]
+            }
+        },
+        "Sex": {
+            "description": "Sex ( \"Female\" | \"Male\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Female",
+                    "Male"
+                ]
+            }
+        },
+        "SleepDuration": {
+            "description": "Sleep duration ( \"6-9hours\" | \"<6hours\" | \">9hours\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "6-9hours",
+                    "<6hours",
+                    ">9hours"
+                ]
+            }
+        },
+        "SmokerProfile": {
+            "description": "Smoker profile ( \"Ex_Smoker\" | \"Non_Smoker\" | \"Smoker\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "Ex_Smoker",
+                    "Non_Smoker",
+                    "Smoker"
+                ]
+            }
+        },
+        "SocioeconomicStatus": {
+            "description": "Socioeconomic status ( \"1\" | \"2\" | \"3\" )",
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "1",
+                    "2",
+                    "3"
+                ]
+            }
+        }
+    }
+}

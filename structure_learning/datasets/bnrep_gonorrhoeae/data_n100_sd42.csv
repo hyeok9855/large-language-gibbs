@@ -1,0 +1,101 @@
+ASTTest,ClinicianExperience,EpidemiologicalFactors,InitialTreatmentFailure,MedicationAdherence,NumberPartners,PastDiagnoses,PersistingSymptoms,SexualOrientation,UnpromptedTest
+Not initiated,Experienced,High Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Heterosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,One,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,One,One,Symptoms resolve,Homosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Proper Adherence,More than six,One,Symptoms persist,Homosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Improper Adherence,Two to five,One,Symptoms persist,Homosexual,Not initiated
+Initiated,Experienced,High Risk Group,Treatment failure,Proper Adherence,One,Five to nine,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,One,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Improper Adherence,Two to five,One,Symptoms resolve,Heterosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,One,Two to four,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,One,One,Symptoms resolve,Heterosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Initiated,Unexperienced,Low Risk Group,Treatment failure,Improper Adherence,Two to five,One,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment failure,Improper Adherence,One,Two to four,Symptoms persist,Homosexual,Not initiated
+Initiated,Experienced,High Risk Group,Treatment failure,Proper Adherence,Two to five,Two to four,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Improper Adherence,One,One,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Improper Adherence,One,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Improper Adherence,Two to five,One,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Improper Adherence,Two to five,One,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Improper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,One,One,Symptoms persist,Heterosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment success,Proper Adherence,One,Two to four,Symptoms resolve,Heterosexual,Not initiated
+Initiated,Unexperienced,Low Risk Group,Treatment failure,Proper Adherence,One,Two to four,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment success,Improper Adherence,More than six,One,Symptoms resolve,Homosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Improper Adherence,Two to five,One,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,More than six,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Heterosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Heterosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment success,Proper Adherence,Two to five,Two to four,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Initiated,Unexperienced,High Risk Group,Treatment failure,Proper Adherence,Two to five,One,Symptoms resolve,Heterosexual,Not initiated
+Initiated,Unexperienced,Low Risk Group,Treatment failure,Improper Adherence,One,One,Symptoms persist,Heterosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,One,Two to four,Symptoms resolve,Heterosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Improper Adherence,One,One,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Improper Adherence,One,One,Symptoms persist,Heterosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Improper Adherence,More than six,One,Symptoms resolve,Heterosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment success,Proper Adherence,More than six,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment success,Proper Adherence,More than six,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,One,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,More than six,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment success,Proper Adherence,More than six,One,Symptoms resolve,Homosexual,Not initiated
+Initiated,Experienced,High Risk Group,Treatment failure,Proper Adherence,More than six,One,Symptoms resolve,Homosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Proper Adherence,Two to five,One,Symptoms persist,Heterosexual,Not initiated
+Initiated,Unexperienced,Low Risk Group,Treatment failure,Improper Adherence,One,One,Symptoms persist,Homosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,Two to four,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,One,One,Symptoms resolve,Homosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Improper Adherence,One,One,Symptoms persist,Heterosexual,Not initiated
+Not initiated,Unexperienced,High Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment success,Proper Adherence,More than six,One,Symptoms resolve,Heterosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Improper Adherence,Two to five,One,Symptoms persist,Homosexual,Not initiated
+Initiated,Experienced,High Risk Group,Treatment failure,Proper Adherence,Two to five,Two to four,Symptoms persist,Heterosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Improper Adherence,One,One,Symptoms persist,Heterosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Heterosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,More than six,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,One,One,Symptoms resolve,Homosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Proper Adherence,Two to five,One,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment success,Proper Adherence,More than six,Two to four,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Improper Adherence,Two to five,One,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,Two to four,Symptoms resolve,Heterosexual,Not initiated
+Not initiated,Unexperienced,High Risk Group,Treatment success,Proper Adherence,Two to five,Two to four,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,One,One,Symptoms resolve,Heterosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,One,One,Symptoms resolve,Homosexual,Not initiated
+Initiated,Unexperienced,High Risk Group,Treatment failure,Proper Adherence,Two to five,One,Symptoms persist,Heterosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,More than six,One,Symptoms resolve,Heterosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,More than six,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms persist,Homosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,Two to four,Symptoms resolve,Heterosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Improper Adherence,Two to five,Two to four,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,More than six,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,One,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Improper Adherence,Two to five,One,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Improper Adherence,One,Two to four,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment success,Proper Adherence,Two to five,Two to four,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,One,Two to four,Symptoms resolve,Homosexual,Not initiated
+Initiated,Unexperienced,High Risk Group,Treatment failure,Improper Adherence,Two to five,One,Symptoms persist,Heterosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,Two to five,One,Symptoms resolve,Heterosexual,Not initiated
+Initiated,Unexperienced,High Risk Group,Treatment failure,Proper Adherence,One,Two to four,Symptoms persist,Homosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Proper Adherence,Two to five,Two to four,Symptoms persist,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment success,Proper Adherence,One,Five to nine,Symptoms resolve,Homosexual,Not initiated
+Initiated,Unexperienced,Low Risk Group,Treatment failure,Improper Adherence,One,One,Symptoms persist,Homosexual,Not initiated
+Initiated,Unexperienced,Low Risk Group,Treatment failure,Improper Adherence,Two to five,One,Symptoms persist,Heterosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment success,Proper Adherence,One,Two to four,Symptoms resolve,Heterosexual,Not initiated
+Not initiated,Unexperienced,Low Risk Group,Treatment success,Proper Adherence,One,One,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,High Risk Group,Treatment success,Proper Adherence,Two to five,Two to four,Symptoms resolve,Homosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment failure,Improper Adherence,Two to five,Two to four,Symptoms persist,Homosexual,Not initiated
+Initiated,Experienced,Low Risk Group,Treatment failure,Improper Adherence,One,One,Symptoms persist,Heterosexual,Not initiated
+Not initiated,Experienced,Low Risk Group,Treatment failure,Improper Adherence,Two to five,Two to four,Symptoms persist,Homosexual,Not initiated
+Initiated,Experienced,High Risk Group,Treatment failure,Improper Adherence,One,Two to four,Symptoms persist,Homosexual,Not initiated

@@ -26,7 +26,9 @@ DATASET_PARAMS = {
     "bnrep_tubercolosis": {"burnin": 100, "thinning": 10, "block_size": 1, "sweep": True},
     "bnrep_knowledge": {"burnin": 120, "thinning": 12, "block_size": 1, "sweep": True},
     "bnrep_algalactivity2": {"burnin": 160, "thinning": 16, "block_size": 1, "sweep": True},
+    "bnrep_gonorrhoeae": {"burnin": 100, "thinning": 10, "block_size": 2, "sweep": True},
     "bnrep_disputed1": {"burnin": 110, "thinning": 11, "block_size": 2, "sweep": True},
+    "bnrep_cardiovascular": {"burnin": 130, "thinning": 13, "block_size": 2, "sweep": True},
     "bnrep_consequenceCovid": {"burnin": 150, "thinning": 15, "block_size": 2, "sweep": True},
 }
 
