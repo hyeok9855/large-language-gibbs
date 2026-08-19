@@ -12,7 +12,7 @@ from priorbot.priors import BarkerGibbsLLMPrior, GamblingGibbsLLMPrior, GibbsLLM
 from sampling.continuation_llm import ContinuationOpenAICompatLLM
 from sampling.continuation_prior import ContinuationLLMPrior
 from sampling.targets import TARGETS, get_target
-from sampling.templates import create_continuation_setup, create_template_and_schema
+from sampling.templates import create_template_and_schema
 from sampling.utils import MODEL_NAME_TO_TYPE, RESULTS_DIR, indexed_var_names
 
 
@@ -86,7 +86,7 @@ def main(args: argparse.Namespace):
             temperature=args.temperature,
             max_tokens=32 + (1024 if args.manual_reasoning else 0),
         )
-        indep_template, indep_schema = create_template_and_schema("indep", args)
+        indep_template, indep_schema = create_template_and_schema(args, "indep")
         indep_prior = LLMPrior(
             llm=llm,
             template=indep_template,
@@ -114,7 +114,7 @@ def main(args: argparse.Namespace):
             temperature=args.temperature,
             max_tokens=args.n_samples_per_chain * 32 + (1024 if args.manual_reasoning else 0),
         )
-        batch_template, batch_schema = create_template_and_schema("batch", args)
+        batch_template, batch_schema = create_template_and_schema(args, "batch")
         batch_prior = LLMPrior(
             llm=llm,
             template=batch_template,
@@ -165,7 +165,7 @@ def main(args: argparse.Namespace):
                 temperature=args.temperature,
                 max_tokens=32,
             )
-            template, schema = create_continuation_setup(args)
+            template, schema = create_template_and_schema(args, "direct", continuation=True)
             prior = ContinuationLLMPrior(
                 llm=llm,
                 template=template,
@@ -177,7 +177,7 @@ def main(args: argparse.Namespace):
                 temperature=args.temperature,
                 max_tokens=args.gibbs_k_vars * 32 + (1024 if args.manual_reasoning else 0),
             )
-            template, schema = create_template_and_schema("direct", args)
+            template, schema = create_template_and_schema(args, "direct")
             prior = LLMPrior(
                 llm=llm,
                 template=template,
@@ -239,7 +239,7 @@ def main(args: argparse.Namespace):
             max_tokens=args.gibbs_k_vars * 32 + (1024 if args.manual_reasoning else 0),
         )
 
-        gibbs_template, gibbs_schema = create_template_and_schema("gibbs", args)
+        gibbs_template, gibbs_schema = create_template_and_schema(args, "gibbs")
         llm_prior = LLMPrior(
             llm=llm,
             template=gibbs_template,
@@ -271,7 +271,9 @@ def main(args: argparse.Namespace):
             temperature=args.temperature,
             max_tokens=32,
         )
-        continuation_template, gibbs_schema = create_continuation_setup(args)
+        continuation_template, gibbs_schema = create_template_and_schema(
+            args, "gibbs", continuation=True
+        )
         continuation_prior = ContinuationLLMPrior(
             llm=llm,
             template=continuation_template,
@@ -302,7 +304,7 @@ def main(args: argparse.Namespace):
             temperature=1.0,
             max_tokens=32 + (1024 if args.manual_reasoning else 0),
         )
-        barker_template, gibbs_schema = create_template_and_schema("barker_gibbs", args)
+        barker_template, gibbs_schema = create_template_and_schema(args, "barker_gibbs")
         barker_gibbs_prior = BarkerGibbsLLMPrior(
             llm=llm,
             template=barker_template,
@@ -333,7 +335,7 @@ def main(args: argparse.Namespace):
             temperature=0.0 if not args.manual_reasoning else 1.0,
             max_tokens=32 + (1024 if args.manual_reasoning else 0),
         )
-        gambling_template, gibbs_schema = create_template_and_schema("gambling_gibbs", args)
+        gambling_template, gibbs_schema = create_template_and_schema(args, "gambling_gibbs")
         gambling_gibbs_prior = GamblingGibbsLLMPrior(
             llm=llm,
             burn_in=args.burn_in,

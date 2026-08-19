@@ -70,11 +70,15 @@ echo "Model: $MODEL ($MODEL_TYPE), port: $PORT, seeds: $NSEEDS, reasoning: $REAS
 
 mkdir -p "$SCRIPT_DIR/tmp"
 
-PIDFILE="$SCRIPT_DIR/tmp/run_parallel.pids"
+# One pid file per invocation ($$ = this shell), so two sweeps sharing this
+# checkout cannot truncate or delete each other's list.
+PIDFILE="$SCRIPT_DIR/tmp/run_parallel.$$.pids"
 PIDS=()
 : > "$PIDFILE"
 
-# Ctrl+C kills all launched jobs. From another shell: kill $(cat sampling/tmp/run_parallel.pids)
+# Ctrl+C kills all launched jobs. From another shell, either of:
+echo "To stop this sweep elsewhere: kill \$(cat $PIDFILE)"
+echo "                          or: pkill -f \"run.py --model_name $MODEL\""
 trap 'kill "${PIDS[@]}" 2>/dev/null; rm -f "$PIDFILE"; exit 130' INT TERM
 
 launch() {

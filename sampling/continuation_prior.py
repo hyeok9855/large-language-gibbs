@@ -53,7 +53,7 @@ class ContinuationLLMPrior(AsyncPrior):
             for key in gen_schema["required"]:
                 subschema = gen_schema["properties"][key]
                 prompt = self.template(context or None, next_key=key)
-                value = self.llm.generate(prompt, subschema, verbose=verbose)
+                value = self.llm.generate(prompt, subschema, verbose=verbose, max_trials=100)
                 result[key] = value
                 context[key] = value
 
