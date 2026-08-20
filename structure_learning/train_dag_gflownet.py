@@ -209,6 +209,8 @@ def build_train_command(exp: Experiment, args: argparse.Namespace) -> list[str]:
         json.dumps(prior_kwargs),
         "--exp_name",
         exp.exp_name,
+        "--seed",
+        str(exp.seed),
         "bn",
         "--dataset_name",
         exp.dataset_name,
@@ -446,7 +448,7 @@ if __name__ == "__main__":
         nargs="+",
         type=int,
         required=True,
-        help="Data seeds, e.g. 0 1 2.",
+        help="Random seeds for train.py, e.g. 0 1 2; the data is fixed by --data_seed.",
     )
     parser.add_argument(
         "--gammas",
