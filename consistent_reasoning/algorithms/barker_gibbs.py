@@ -4,16 +4,15 @@ import argparse
 import json
 import random
 from collections import Counter
-from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
-from priorbot.priors import GibbsLLMPrior, Prior
-from tqdm import tqdm
 
 from consistent_reasoning.algorithms.gibbs import (
-    _hierarchical_demo_order,
+    DemoPoolPrior,
+    LoggedGibbsLLMPrior,
+    SweepSchedule,
     apply_assignment_to_demos,
     build_schema,
     evaluate_assignment,
@@ -21,60 +20,24 @@ from consistent_reasoning.algorithms.gibbs import (
 from consistent_reasoning.models import OpenAICompatLLM
 
 
-class ICMBarkerConditionalPrior(Prior):
-    def __init__(
-        self,
-        llm: OpenAICompatLLM,
-        demonstrations: dict[int, dict[str, Any]],
-    ):
-        super().__init__()
-        self.llm = llm
-        self.demonstrations = demonstrations
+class CustomBarkerPrior(DemoPoolPrior):
+    def __init__(self, llm: OpenAICompatLLM, demonstrations: dict[int, dict[str, Any]]):
+        super().__init__(llm, demonstrations)
         if not self.llm.instruction_tuned:
             raise NotImplementedError(
                 "Barker Gibbs variant is only supported for instruction-tuned models."
             )
         self._label_choices = ["Option 1", "Option 2"]
 
-    def sample(
-        self,
-        n_samples: int,
-        schema: dict[str, Any],
-        verbose: bool = False,
-        pbar: bool = False,
-    ) -> list[dict[str, Any]]:
-        keys = list(schema["properties"].keys())
-        n = len(keys)
-        n_true = (n + 1) // 2
-        samples: list[dict[str, Any]] = []
-        for _ in range(n_samples):
-            labels = [True] * n_true + [False] * (n - n_true)
-            random.shuffle(labels)
-            samples.append(dict(zip(keys, labels)))
-        return samples
-
     def sample_conditional(
         self,
         n_samples: int,
         schema: dict[str, Any],
         observed: dict[str, Any],
+        schedule: SweepSchedule,
         verbose: bool = False,
     ) -> list[dict[str, Any]]:
-        if len(schema["properties"]) != 1:
-            raise ValueError(
-                "ICMBarkerConditionalPrior.sample_conditional expects a single-key schema; "
-                f"got {list(schema['properties'])}."
-            )
-
-        (key,) = schema["properties"].keys()
-        uid = int(key)
-        example = self.demonstrations[uid]
-        current_pool = self._build_pool_from_observed(observed, skip_uid=uid)
-        demos = _hierarchical_demo_order(
-            current_pool,
-            target_consistency_id=example["consistency_id"],
-            target_uid=example["uid"],
-        )
+        key, example, demos = self.prepare_conditional(schema, observed, schedule)
 
         is_true_option1 = random.choice([True, False])
 
@@ -106,90 +69,9 @@ class ICMBarkerConditionalPrior(Prior):
             raise ValueError(f"Unexpected chosen option: {chosen}")
 
         if verbose:
-            print(f"[BarkerGibbs] uid={uid} -> {value} (chosen={chosen!r})")
+            print(f"[BarkerGibbs] uid={example['uid']} -> {value} (chosen={chosen!r})")
 
         return [{key: value} for _ in range(n_samples)]
-
-    def _build_pool_from_observed(
-        self,
-        observed: dict[str, Any],
-        skip_uid: int,
-    ) -> dict[int, dict[str, Any]]:
-        pool: dict[int, dict[str, Any]] = {}
-        for key, value in observed.items():
-            uid = int(key)
-            if uid == skip_uid:
-                continue
-
-            example = deepcopy(self.demonstrations[uid])
-            example["label"] = int(bool(value))
-            pool[uid] = example
-        return pool
-
-
-class LoggedBarkerGibbsLLMPrior(GibbsLLMPrior):
-    def __init__(
-        self,
-        base_prior: Prior,
-        burn_in: int,
-        thinning: int,
-        sweep: bool = False,
-        on_step: Callable[[int, dict[str, Any], str], None] | None = None,
-    ):
-        super().__init__(base_prior, burn_in, thinning, block_size=1, sweep=sweep)
-        self.on_step = on_step
-
-    def _sample_impl(
-        self,
-        n_samples: int,
-        schema: dict[str, Any],
-        observed: dict[str, Any] | None = None,
-        verbose: bool = False,
-        pbar: int | None = None,
-    ) -> list[dict[str, Any]]:
-        samples = self.llm_prior.sample(1, schema, verbose, False)
-
-        chain_length = self.burn_in + n_samples * self.thinning
-        keys_pool: list[str] = []
-        for step in tqdm(
-            range(chain_length),
-            disable=pbar is None,
-            position=pbar,
-            desc=f"Chain {pbar}",
-            dynamic_ncols=True,
-        ):
-            current = samples[-1].copy()
-            keys = list(current.keys())
-            np.random.shuffle(keys)
-
-            if self.sweep:
-                if not keys_pool:
-                    keys_pool = keys
-                key_to_resample = keys_pool.pop(0)
-            else:
-                key_to_resample = keys[-1]
-
-            observed_without_key = {k: current[k] for k in keys if k != key_to_resample}
-            conditional_schema = {
-                "type": "object",
-                "properties": {key_to_resample: schema["properties"][key_to_resample]},
-                "required": [key_to_resample],
-            }
-
-            conditional_observed = {**observed_without_key, **(observed or {})}
-            resampled_value = self.llm_prior.sample_conditional(
-                1,
-                conditional_schema,
-                conditional_observed,
-                verbose,
-            )[0]
-            new_sample = observed_without_key | resampled_value
-            samples.append(new_sample)
-
-            if self.on_step is not None:
-                self.on_step(step, new_sample, key_to_resample)
-
-        return samples[self.burn_in + self.thinning :: self.thinning][:n_samples]
 
 
 def run_barker_gibbs_search(
@@ -204,19 +86,21 @@ def run_barker_gibbs_search(
     schema = build_schema(whole_ids)
 
     sweep = bool(args.sweep)
+    fast_demo_order = bool(getattr(args, "fast_demo_order", False))
     parallel = args.num_workers > 1
     if not parallel:
         print(
             f"[barker_gibbs]: full-batch Barker Gibbs over N={len(whole_ids)} "
             f"variables (T={llm.temperature}, burn_in={args.burn_in}, "
-            f"thinning={args.thinning}, num_samples={args.num_samples}, sweep={sweep})"
+            f"thinning={args.thinning}, num_samples={args.num_samples}, sweep={sweep}, "
+            f"fast_demo_order={fast_demo_order})"
         )
 
     if log_path is not None:
         log_path = Path(log_path)
         log_path.unlink(missing_ok=True)
 
-    base_prior = ICMBarkerConditionalPrior(llm=llm, demonstrations=demonstrations)
+    llm_prior = CustomBarkerPrior(llm=llm, demonstrations=demonstrations)
 
     state = {"step": 0}
 
@@ -243,11 +127,12 @@ def run_barker_gibbs_search(
                 f"pred_dist={metrics['train_predict_distribution']}"
             )
 
-    gibbs = LoggedBarkerGibbsLLMPrior(
-        base_prior=base_prior,
+    gibbs = LoggedGibbsLLMPrior(
+        llm_prior=llm_prior,
         burn_in=args.burn_in,
         thinning=args.thinning,
         sweep=sweep,
+        fast_demo_order=fast_demo_order,
         on_step=on_step,
     )
     samples = gibbs.sample(

@@ -57,6 +57,11 @@ INSTRUCT_MODELS = [
     "allenai/Olmo-3-32B-Think",
 ]
 
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a helpful assistant. You verify whether a claim correctly "
+    "answers a question: True if the claim is correct, False if not."
+)
+
 ICM_CACHE_KEY_FIELDS = (
     "K",
     "alpha",
@@ -75,6 +80,7 @@ GIBBS_CACHE_KEY_FIELDS = (
     "thinning",
     "num_samples",
     "sweep",
+    "fast_demo_order",
     "model",
     "instruction_tuned",
     "system_prompt",
@@ -820,12 +826,6 @@ if __name__ == "__main__":
     # Model
     parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-8B")
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument(
-        "--system_prompt",
-        type=str,
-        default=None,
-        help="System prompt for instruction-tuned models, if None, a default prompt will be used",
-    )
 
     # Output
     parser.add_argument("--output_dir", type=Path, default=None)
@@ -864,6 +864,13 @@ if __name__ == "__main__":
     parser.add_argument("--burn_in", type=int, default=None)
     parser.add_argument("--thinning", type=int, default=None)
     parser.add_argument("--no_sweep", dest="sweep", action="store_false")
+    parser.add_argument(
+        "--fast_demo_order",
+        action="store_true",
+        help="(gibbs variants) Sweep consistency-group-major and draw the demonstration order "
+        "once per sweep instead of per conditional, so vLLM's prefix cache hits (~5x "
+        "less prefill at chunk_size_cis=16). Approximates the default sampler.",
+    )
     parser.add_argument("--manual_reasoning", action="store_true")
 
     ## NPass
@@ -884,15 +891,16 @@ if __name__ == "__main__":
     if args.model in INSTRUCT_MODELS:
         args.instruction_tuned = True
 
-    if args.system_prompt is None and args.instruction_tuned:
-        args.system_prompt = (
-            "You are a helpful assistant. You verify whether a claim correctly "
-            "answers a question: True if the claim is correct, False if not."
-        )
+    args.system_prompt = DEFAULT_SYSTEM_PROMPT if args.instruction_tuned else None
 
     if args.algorithm == "zeroshot" and args.chunk_size_cis != 1:
         print(f"[run_eval] {args.algorithm} ignores chunk_size_cis; forcing chunk_size_cis=1.")
         args.chunk_size_cis = 1
+
+    if args.algorithm not in ("gibbs", "barker_gibbs", "gambling_gibbs"):
+        args.fast_demo_order = False
+    if args.fast_demo_order and not args.sweep:
+        raise ValueError("--fast_demo_order requires sweep mode; drop --no_sweep.")
 
     if args.algorithm in ("gibbs", "barker_gibbs", "gambling_gibbs"):
         _GROUP_SIZES = {"alpaca": 2, "gsm8k": 4, "truthfulQA": 4, "truthfulQA-preference": 2}
@@ -915,6 +923,7 @@ if __name__ == "__main__":
             )
         if args.algorithm in ("gibbs", "barker_gibbs", "gambling_gibbs"):
             scan = "_sweep" if args.sweep else ""
+            order = "_fastorder" if args.fast_demo_order else ""
             reasoning = "_reasoning" if getattr(args, "manual_reasoning", False) else ""
             if args.algorithm == "gibbs":
                 prefix = "gibbs_"
@@ -925,7 +934,7 @@ if __name__ == "__main__":
             return (
                 f"{prefix}{model_short}"
                 f"_T{args.temperature}_burn{args.burn_in}_thin{args.thinning}"
-                f"_K{args.num_samples}{scan}{reasoning}_cs{args.chunk_size_cis}"
+                f"_K{args.num_samples}{scan}{order}{reasoning}_cs{args.chunk_size_cis}"
                 f"_baseseed{args.partition_base_seed}"
             )
         if args.algorithm == "zeroshot":

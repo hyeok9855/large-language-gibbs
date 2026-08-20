@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+from abc import ABC, abstractmethod
 from collections import Counter
 from copy import deepcopy
 from pathlib import Path
@@ -16,18 +17,119 @@ from consistent_reasoning.models import OpenAICompatLLM
 from consistent_reasoning.prompt_utils import get_judge_prompt_fewshot
 
 
-class CustomPrior(Prior):
-    def __init__(
-        self,
-        llm: OpenAICompatLLM,
-        demonstrations: dict[int, dict[str, Any]],
-    ):
+class SweepSchedule:
+    """Pick which variable to resample next, and order the demos for each conditional.
+
+    Flat mode (``key_to_cid=None``): a flat random scan or sweep.
+    ``group_rank``/``key_to_rank`` stay ``None`` so ``order_demos`` reshuffles the
+    demo order per conditional.
+
+    Hierarchical mode (requires ``sweep=True``): resample one consistency group at a
+    time, reusing one demo order per sweep. Drawing the demo order once per sweep,
+    and finishing a group before starting the next group: prompts for each group
+    share a prefix that vLLM's cache can reuse. Every variable is still resampled
+    once per sweep and conditions on all the others, but the order is randomised per
+    sweep rather than per conditional, so this approximates the default sampler.
+    """
+
+    def __init__(self, keys: list[str], sweep: bool, key_to_cid: dict[str, Any] | None = None):
+        if key_to_cid is not None and not sweep:
+            raise ValueError("Hierarchical scheduling (key_to_cid) requires sweep=True.")
+
+        self.keys = list(keys)
+        self.sweep = sweep
+
+        # for flat sweep
+        self._flat_queue: list[str] = []
+
+        # for hierarchical sweep
+        self._cid_to_keys: dict[Any, list[str]] | None = None
+        if key_to_cid is not None:
+            self._cid_to_keys = {}
+            for key in self.keys:
+                self._cid_to_keys.setdefault(key_to_cid[key], []).append(key)
+
+        self.group_rank: dict[Any, int] | None = None
+        self.key_to_rank: dict[int, int] | None = None
+        self._cid_to_key_order: dict[Any, list[str]] = {}
+        self._cid_queue: list[Any] = []
+        self._member_queue: list[str] = []
+
+    def next_key(self) -> str:
+        if self._cid_to_keys is None:
+            # Flat random scan: uniform draw each step.
+            if not self.sweep:
+                return random.choice(self.keys)
+            # Flat sweep: pop from a queue reshuffled once per sweep.
+            if not self._flat_queue:
+                self._flat_queue = list(self.keys)
+                random.shuffle(self._flat_queue)
+            return self._flat_queue.pop(0)
+
+        # Hierarchical sweep: finish one consistency group before the next,
+        # redrawing the group/member order once per sweep.
+        if not self._member_queue:
+            if not self._cid_queue:
+                cids = list(self._cid_to_keys)
+                random.shuffle(cids)
+                self.group_rank = {cid: rank for rank, cid in enumerate(cids)}
+                self.key_to_rank = {}
+                self._cid_to_key_order = {}
+                for cid in cids:
+                    members = list(self._cid_to_keys[cid])
+                    random.shuffle(members)
+                    self._cid_to_key_order[cid] = members
+                    for rank, key in enumerate(members):
+                        self.key_to_rank[int(key)] = rank
+                self._cid_queue = cids
+            self._member_queue = list(self._cid_to_key_order[self._cid_queue.pop(0)])
+        return self._member_queue.pop(0)
+
+    def order_demos(
+        self, current_pool: dict[int, dict[str, Any]], target_consistency_id: Any, target_uid: int
+    ) -> list[dict[str, Any]]:
+        """Order the labelled pool for one conditional: other groups first, target's group last."""
+        groups: dict[Any, list[dict[str, Any]]] = {}
+        target_group: list[dict[str, Any]] = []
+
+        for uid, example in current_pool.items():
+            if uid == target_uid:
+                continue
+
+            if example["consistency_id"] == target_consistency_id:
+                target_group.append(example)
+            else:
+                groups.setdefault(example["consistency_id"], []).append(example)
+
+        group_keys = list(groups.keys())
+        if self.group_rank is None:  # Flat random scan or sweep
+            random.shuffle(group_keys)
+        else:  # Hierarchical sweep
+            group_keys.sort(key=lambda key: self.group_rank[key])
+
+        def _ordered_members(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            members = list(members)
+            if self.key_to_rank is None:  # Flat random scan or sweep
+                random.shuffle(members)
+                return members
+            # Hierarchical sweep
+            return sorted(members, key=lambda e: self.key_to_rank[e["uid"]])
+
+        ordered: list[dict[str, Any]] = []
+        for group_key in group_keys:
+            ordered.extend(_ordered_members(groups[group_key]))
+
+        ordered.extend(_ordered_members(target_group))
+        return ordered
+
+
+class DemoPoolPrior(Prior, ABC):
+    """Prior over the labels of a demonstration pool (shared by the Gibbs variants)."""
+
+    def __init__(self, llm: OpenAICompatLLM, demonstrations: dict[int, dict[str, Any]]):
         super().__init__()
         self.llm = llm
         self.demonstrations = demonstrations
-        self._label_choices = (
-            ["True", "False"] if self.llm.instruction_tuned else [" True", " False"]
-        )
 
     def sample(
         self,
@@ -46,28 +148,74 @@ class CustomPrior(Prior):
             samples.append(dict(zip(keys, labels)))
         return samples
 
+    def prepare_conditional(
+        self,
+        schema: dict[str, Any],
+        observed: dict[str, Any],
+        schedule: SweepSchedule,
+    ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        """Return (key, target example, demonstrations ordered for that target)."""
+        if len(schema["properties"]) != 1:
+            raise ValueError(
+                f"{type(self).__name__}.sample_conditional expects a single-key schema; "
+                f"got {list(schema['properties'])}."
+            )
+
+        (key,) = schema["properties"].keys()
+        example = self.demonstrations[int(key)]
+
+        pool: dict[int, dict[str, Any]] = {}
+        for observed_key, value in observed.items():
+            uid = int(observed_key)
+            if uid == example["uid"]:
+                continue
+
+            labelled = deepcopy(self.demonstrations[uid])
+            labelled["label"] = int(bool(value))
+            pool[uid] = labelled
+
+        demos = schedule.order_demos(
+            pool,
+            target_consistency_id=example["consistency_id"],
+            target_uid=example["uid"],
+        )
+        return key, example, demos
+
+    @abstractmethod
     def sample_conditional(
         self,
         n_samples: int,
         schema: dict[str, Any],
         observed: dict[str, Any],
+        schedule: SweepSchedule,
         verbose: bool = False,
     ) -> list[dict[str, Any]]:
-        if len(schema["properties"]) != 1:
-            raise ValueError(
-                "CustomPrior.sample_conditional expects a single-key schema; "
-                f"got {list(schema['properties'])}."
-            )
+        pass
 
-        (key,) = schema["properties"].keys()
-        uid = int(key)
-        example = self.demonstrations[uid]
-        current_pool = self._build_pool_from_observed(observed, skip_uid=uid)
-        demos = _hierarchical_demo_order(
-            current_pool,
-            target_consistency_id=example["consistency_id"],
-            target_uid=example["uid"],
+    def sample_parallel(self, *args: Any, **kwargs: Any) -> Any:
+        raise NotImplementedError("Not used for this experiment.")
+
+    def sample_conditional_parallel(self, *args: Any, **kwargs: Any) -> Any:
+        raise NotImplementedError("Not used for this experiment.")
+
+
+class CustomPrior(DemoPoolPrior):
+    def __init__(self, llm: OpenAICompatLLM, demonstrations: dict[int, dict[str, Any]]):
+        super().__init__(llm, demonstrations)
+        self._label_choices = (
+            ["True", "False"] if self.llm.instruction_tuned else [" True", " False"]
         )
+
+    def sample_conditional(
+        self,
+        n_samples: int,
+        schema: dict[str, Any],
+        observed: dict[str, Any],
+        schedule: SweepSchedule,
+        verbose: bool = False,
+    ) -> list[dict[str, Any]]:
+        key, example, demos = self.prepare_conditional(schema, observed, schedule)
+
         if self.llm.instruction_tuned:
             prompt = example["prompt"]
             chosen = self.llm.generate(
@@ -84,69 +232,35 @@ class CustomPrior(Prior):
         value = chosen.strip().capitalize() == "True"
 
         if verbose:
-            print(f"[Gibbs] uid={uid} -> {value} (chosen={chosen!r})")
+            print(f"[Gibbs] uid={example['uid']} -> {value} (chosen={chosen!r})")
 
         return [{key: value} for _ in range(n_samples)]
-
-    def _build_pool_from_observed(
-        self,
-        observed: dict[str, Any],
-        skip_uid: int,
-    ) -> dict[int, dict[str, Any]]:
-        pool: dict[int, dict[str, Any]] = {}
-        for key, value in observed.items():
-            uid = int(key)
-            if uid == skip_uid:
-                continue
-
-            example = deepcopy(self.demonstrations[uid])
-            example["label"] = int(bool(value))
-            pool[uid] = example
-        return pool
-
-
-def _hierarchical_demo_order(
-    current_pool: dict[int, dict[str, Any]],
-    target_consistency_id: Any,
-    target_uid: int,
-) -> list[dict[str, Any]]:
-    groups: dict[Any, list[dict[str, Any]]] = {}
-    target_group: list[dict[str, Any]] = []
-
-    for uid, example in current_pool.items():
-        if example.get("label") is None or uid == target_uid:
-            continue
-
-        if example["consistency_id"] == target_consistency_id:
-            target_group.append(example)
-        else:
-            groups.setdefault(example["consistency_id"], []).append(example)
-
-    group_keys = list(groups.keys())
-    random.shuffle(group_keys)
-
-    ordered: list[dict[str, Any]] = []
-    for group_key in group_keys:
-        members = list(groups[group_key])
-        random.shuffle(members)
-        ordered.extend(members)
-
-    random.shuffle(target_group)
-    ordered.extend(target_group)
-    return ordered
 
 
 class LoggedGibbsLLMPrior(GibbsLLMPrior):
     def __init__(
         self,
-        base_prior: Prior,
+        llm_prior: DemoPoolPrior,
         burn_in: int,
         thinning: int,
         sweep: bool = False,
+        fast_demo_order: bool = False,
         on_step: Callable[[int, dict[str, Any], str], None] | None = None,
     ):
-        super().__init__(base_prior, burn_in, thinning, block_size=1, sweep=sweep)
+        if fast_demo_order and not sweep:
+            raise ValueError("fast_demo_order=True requires sweep=True.")
+        super().__init__(llm_prior, burn_in, thinning, block_size=1, sweep=sweep)
+        self.llm_prior: DemoPoolPrior
         self.on_step = on_step
+        self.fast_demo_order = fast_demo_order
+
+    def _build_schedule(self, keys: list[str]) -> SweepSchedule:
+        if not self.fast_demo_order:
+            return SweepSchedule(keys, sweep=self.sweep)
+
+        demonstrations = self.llm_prior.demonstrations
+        key_to_cid = {key: demonstrations[int(key)]["consistency_id"] for key in keys}
+        return SweepSchedule(keys, sweep=self.sweep, key_to_cid=key_to_cid)
 
     def _sample_impl(
         self,
@@ -159,7 +273,7 @@ class LoggedGibbsLLMPrior(GibbsLLMPrior):
         samples = self.llm_prior.sample(1, schema, verbose, False)
 
         chain_length = self.burn_in + n_samples * self.thinning
-        keys_pool: list[str] = []
+        schedule = self._build_schedule(list(samples[-1].keys()))
         for step in tqdm(
             range(chain_length),
             disable=pbar is None,
@@ -168,17 +282,8 @@ class LoggedGibbsLLMPrior(GibbsLLMPrior):
             dynamic_ncols=True,
         ):
             current = samples[-1].copy()
-            keys = list(current.keys())
-            np.random.shuffle(keys)
-
-            if self.sweep:
-                if not keys_pool:
-                    keys_pool = keys
-                key_to_resample = keys_pool.pop(0)
-            else:
-                key_to_resample = keys[-1]
-
-            observed_without_key = {k: current[k] for k in keys if k != key_to_resample}
+            key_to_resample = schedule.next_key()
+            observed_without_key = {k: v for k, v in current.items() if k != key_to_resample}
             conditional_schema = {
                 "type": "object",
                 "properties": {key_to_resample: schema["properties"][key_to_resample]},
@@ -190,6 +295,7 @@ class LoggedGibbsLLMPrior(GibbsLLMPrior):
                 1,
                 conditional_schema,
                 conditional_observed,
+                schedule,
                 verbose,
             )[0]
             new_sample = observed_without_key | resampled_value
@@ -245,12 +351,14 @@ def run_gibbs_search(
     verbose: bool = False,
 ) -> tuple[dict[int, dict[str, Any]], dict[str, Any]]:
     sweep = bool(args.sweep)
+    fast_demo_order = bool(getattr(args, "fast_demo_order", False))
     parallel = args.num_workers > 1
     if not parallel:
         print(
             f"[gibbs]: full-batch Gibbs over N={len(whole_ids)} "
             f"variables (T={llm.temperature}, burn_in={args.burn_in}, "
-            f"thinning={args.thinning}, num_samples={args.num_samples}, sweep={sweep})"
+            f"thinning={args.thinning}, num_samples={args.num_samples}, sweep={sweep}, "
+            f"fast_demo_order={fast_demo_order})"
         )
 
     if log_path is not None:
@@ -285,10 +393,11 @@ def run_gibbs_search(
             )
 
     gibbs = LoggedGibbsLLMPrior(
-        base_prior=base_prior,
+        llm_prior=base_prior,
         burn_in=args.burn_in,
         thinning=args.thinning,
         sweep=sweep,
+        fast_demo_order=fast_demo_order,
         on_step=on_step,
     )
     samples = gibbs.sample(
