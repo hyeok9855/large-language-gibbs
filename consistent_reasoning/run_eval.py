@@ -54,7 +54,8 @@ def _chunk_log(message: str) -> None:
 INSTRUCT_MODELS = [
     "meta-llama/Llama-3.1-8B-Instruct",
     "meta-llama/Llama-3.1-70B-Instruct",
-    "allenai/Olmo-3-32B-Think",
+    "allenai/Olmo-3.1-32B-Instruct",
+    "google/gemma-4-31B-it",
 ]
 
 DEFAULT_SYSTEM_PROMPT = (

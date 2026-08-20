@@ -7,7 +7,7 @@ MODEL_NAME_TO_TYPE = {
     "meta-llama/Llama-3.1-70B": "base",
     "meta-llama/Llama-3.1-70B-Instruct": "instruct",
     "allenai/Olmo-3-1125-32B": "base",
-    "allenai/Olmo-3-32B-Think": "instruct",
+    "allenai/Olmo-3.1-32B-Instruct": "instruct",
     "google/gemma-4-31B": "base",
     "google/gemma-4-31B-it": "instruct",
 }

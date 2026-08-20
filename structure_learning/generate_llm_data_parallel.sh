@@ -22,7 +22,7 @@ launch() {
 
 datasets=($1)  # bnrep_tubercolosis bnrep_knowledge bnrep_algalactivity2 bnrep_gonorrhoeae bnrep_disputed1 bnrep_cardiovascular bnrep_consequenceCovid
 sampling_methods=($2)  # direct gibbs direct_continuation gibbs_continuation barker_gibbs gambling_gibbs
-model_name=$3  # e.g. meta-llama/Llama-3.1-8B, allenai/Olmo-3-32B-Think
+model_name=$3  # e.g. meta-llama/Llama-3.1-8B, allenai/Olmo-3.1-32B-Instruct
 PORT=$4
 manual_reasoning=${5:-false}
 nseeds=${6:-3}
