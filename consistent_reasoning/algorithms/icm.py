@@ -257,8 +257,6 @@ def run_icm_search(
             results = asyncio.run(pipeline.run())
             cur_metric = results["evaluate"]
 
-        cur_pool = {k: v for k, v in demonstrations.items() if v["label"] is not None}
-
         while True:
             candidates_ids = whole_ids
             weights = [1 for _ in range(len(candidates_ids))]
@@ -328,23 +326,14 @@ def run_icm_search(
                     ),
                 )
 
-            # First-time labels (None -> {0,1}) always expand the labeled pool.
-            # MH accept/reject only applies to flips of already-labeled examples;
-            # otherwise high alpha + cooled T can permanently leave items unlabeled.
-            was_unlabeled = demonstrations[example_id]["label"] is None
-            if was_unlabeled:
-                accept_prob = 1.0
-                accept = True
-            else:
-                accept_prob = math.exp(
-                    (get_energy(metric, args.alpha) - get_energy(cur_metric, args.alpha)) / T
-                )
-                accept = random.random() < accept_prob
+            accept_prob = math.exp(
+                (get_energy(metric, args.alpha) - get_energy(cur_metric, args.alpha)) / T
+            )
 
             if verbose:
                 print("accept prob = ", accept_prob)
 
-            if accept:
+            if random.random() < accept_prob:
                 if verbose:
                     print("accept")
                 demonstrations = tmp_demonstrations

@@ -857,7 +857,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_seed", type=int, default=8)
     parser.add_argument("--decay", type=float, default=0.99)
     parser.add_argument("--initial_T", type=float, default=10)
-    parser.add_argument("--final_T", type=float, default=0.1)
+    parser.add_argument("--final_T", type=float, default=0.01)
     parser.add_argument("--scheduler", type=str, default="log")
 
     ## Gibbs
