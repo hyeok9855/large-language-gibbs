@@ -34,6 +34,9 @@ PORT="${PORT:-8000}"
 NPART="${NPART:-5}"              # paper Table 1: 3 seeds but here we use 5
 SEED="${SEED:-42}"               # partition_base_seed
 WORKERS="${WORKERS:-40}"
+WORKERS_CS1="${WORKERS_CS1:-$WORKERS}"
+WORKERS_CS4="${WORKERS_CS4:-$WORKERS}"
+WORKERS_CS16="${WORKERS_CS16:-$WORKERS}"
 # ICM fans out one request per pool item per chunk, so num_workers chunks in
 # flight means num_workers * chunk_size requests in flight; keep it modest or
 # the vLLM queue pushes requests past their timeout into long retry backoffs.
@@ -56,6 +59,16 @@ run_eval() {
   uv run python consistent_reasoning/run_eval.py "$@"
 }
 
+# Workers to use for a given chunk_size_cis (defaults to $WORKERS).
+workers_for_cs() {
+  case "$1" in
+    1) echo "$WORKERS_CS1" ;;
+    4) echo "$WORKERS_CS4" ;;
+    16) echo "$WORKERS_CS16" ;;
+    *) echo "$WORKERS" ;;
+  esac
+}
+
 run_gibbs_testbed() {
   local testbed="$1"
   for cs in $CS_LIST; do
@@ -69,7 +82,7 @@ run_gibbs_testbed() {
       $GIBBS_ORDER_FLAG \
       --n_partitions "$NPART" \
       --partition_base_seed "$SEED" \
-      --num_workers "$WORKERS"
+      --num_workers "$(workers_for_cs "$cs")"
   done
 }
 
@@ -97,7 +110,7 @@ run_baselines_testbed() {
       --chunk_size_cis 1 \
       --n_partitions "$NPART" \
       --partition_base_seed "$SEED" \
-      --num_workers "$WORKERS"
+      --num_workers "$(workers_for_cs 1)"
   done
 
   # "Direct" baselines matched to the Gibbs runs: 25 autoregressive passes over
@@ -119,7 +132,7 @@ run_baselines_testbed() {
         $order_flag \
         --n_partitions "$NPART" \
         --partition_base_seed "$SEED" \
-        --num_workers "$WORKERS"
+        --num_workers "$(workers_for_cs "$cs")"
     done
   done
 }
@@ -177,6 +190,7 @@ if [ "${#TESTBEDS_SEL[@]}" -eq 0 ]; then
 fi
 
 echo "Model=$MODEL  port=$PORT  n_partitions=$NPART  seed=$SEED  workers=$WORKERS (icm: $WORKERS_ICM)"
+echo "workers by chunk_size: cs1=$WORKERS_CS1 cs4=$WORKERS_CS4 cs16=$WORKERS_CS16"
 echo "mode=$MODE  testbeds=${TESTBEDS_SEL[*]}  chunk_sizes=$CS_LIST"
 
 case "$MODE" in

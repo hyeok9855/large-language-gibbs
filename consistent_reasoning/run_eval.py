@@ -235,6 +235,7 @@ def run_icm_chunk(
         "n_items": len(items),
         "n_predicted": int(n_predicted),
         "duration_seconds": float(duration),
+        "num_workers": int(args.num_workers),
         "cache_key_args": cache_args,
         "eval_set_meta": {
             k: eval_set_meta[k]
@@ -345,6 +346,7 @@ def _run_label_predict_chunk(
         "n_items": len(items),
         "n_predicted": int(n_predicted),
         "duration_seconds": float(duration),
+        "num_workers": int(args.num_workers),
         "cache_key_args": cache_args,
         "eval_set_meta": {
             k: eval_set_meta[k]
@@ -616,7 +618,7 @@ def aggregate_run(
         f"over {headline['n_partitions']} partitions, "
         f"min={_fmt(headline['min_accuracy'])}, max={_fmt(headline['max_accuracy'])}"
     )
-    print(f"runtime: mean={_fmt(headline['mean_duration_seconds'])}s")
+    print(f"runtime: mean={_fmt(headline['mean_duration_seconds'])}s per chunk")
     print(
         f"per-item correct-count dist (out of {n_partitions}): "
         f"{summary['per_item_correct_count_distribution']}"
