@@ -242,20 +242,38 @@ def run_icm_search(
     flip_cnt = 0
     example_id = 0
 
+    energy_cache = {}
+    n_pipeline_runs = 0
+    n_cache_hits = 0
+
+    def evaluate_pool(pool, iter):
+        nonlocal n_pipeline_runs, n_cache_hits
+
+        # The energy is fully determined by the labelled assignment: queries are greedy
+        # and the prompts follow from the pool, whose order the key therefore preserves.
+        key = tuple((uid, int(v["label"])) for uid, v in pool.items() if v["label"] is not None)
+        if key in energy_cache:
+            n_cache_hits += 1
+            return deepcopy(energy_cache[key])
+
+        pipeline = get_pipeline(
+            model=args.model,
+            name=pipeline_name,
+            num_problems=None,
+            iter=iter,
+            assignment=pool,
+            instruction_tuned=instruction_tuned,
+            system_prompt=system_prompt,
+        )
+        metric = asyncio.run(pipeline.run())["evaluate"]
+        n_pipeline_runs += 1
+        energy_cache[key] = deepcopy(metric)
+        return metric
+
     for _ in tqdm(range(args.K), desc="icm search", disable=not verbose):
         cur_pool = {k: v for k, v in demonstrations.items() if v["label"] is not None}
         if iter == 0:
-            pipeline = get_pipeline(
-                args.model,
-                name=pipeline_name,
-                num_problems=None,
-                iter=iter,
-                assignment=cur_pool,
-                instruction_tuned=instruction_tuned,
-                system_prompt=system_prompt,
-            )
-            results = asyncio.run(pipeline.run())
-            cur_metric = results["evaluate"]
+            cur_metric = evaluate_pool(cur_pool, iter)
 
         while True:
             candidates_ids = whole_ids
@@ -291,17 +309,7 @@ def run_icm_search(
             tmp_demonstrations[example_id]["label"] = new_label
 
             tmp_pool = {k: v for k, v in tmp_demonstrations.items() if v["label"] is not None}
-            pipeline = get_pipeline(
-                model=args.model,
-                name=pipeline_name,
-                num_problems=None,
-                iter=iter,
-                assignment=tmp_pool,
-                instruction_tuned=instruction_tuned,
-                system_prompt=system_prompt,
-            )
-            results = asyncio.run(pipeline.run())
-            metric = results["evaluate"]
+            metric = evaluate_pool(tmp_pool, iter)
             T = get_temperature(
                 flip_cnt, args.initial_T, args.final_T, args.decay, schedule=args.scheduler
             )
@@ -358,5 +366,13 @@ def run_icm_search(
         if verbose:
             print("=" * 100)
         iter += 1
+
+    if verbose:
+        n_evals = n_pipeline_runs + n_cache_hits
+        print(
+            f"[icm] energy evaluations: {n_evals} "
+            f"({n_pipeline_runs} computed, {n_cache_hits} reused"
+            f"{f', {n_cache_hits / n_evals:.1%} hit rate' if n_evals else ''})"
+        )
 
     return demonstrations, cur_metric
