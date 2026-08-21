@@ -21,7 +21,7 @@
 #   CS_LIST="1 16" bash consistent_reasoning/run.sh gsm8k         # whole gsm8k sweep, cs in {1,16}
 # Other list overrides: NPASS_LIST, ALPHA_LIST, TESTBEDS (default testbed set).
 #
-# Results: consistent_reasoning/eval_results/<testbed>/<algorithm>/<run_name>/summary.json
+# Results: consistent_reasoning/results/<testbed>/<algorithm>/<run_name>/summary.json
 #          headline.mean_accuracy ± headline.std_accuracy  (3 partition seeds)
 
 set -euo pipefail
@@ -165,7 +165,7 @@ run_full() {
     run_testbed "$testbed"
   done
   echo ""
-  echo "Done. Summaries under: $REPO_ROOT/consistent_reasoning/eval_results/"
+  echo "Done. Summaries under: $REPO_ROOT/consistent_reasoning/results/"
 }
 
 MODE="${1:-full}"

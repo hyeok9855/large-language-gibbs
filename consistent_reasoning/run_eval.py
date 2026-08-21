@@ -954,11 +954,7 @@ if __name__ == "__main__":
 
     if args.output_dir is None:
         args.output_dir = (
-            CONSISTENT_REASONING_DIR
-            / "eval_results"
-            / args.testbed
-            / args.algorithm
-            / args.run_name
+            CONSISTENT_REASONING_DIR / "results" / args.testbed / args.algorithm / args.run_name
         )
 
     os.environ["LLAMA_API_BASE"] = f"http://localhost:{args.port}/v1"
