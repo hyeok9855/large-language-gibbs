@@ -19,7 +19,9 @@ import itertools
 import json
 import os
 import random
+import threading
 import time
+from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -35,9 +37,83 @@ from divergent_association_task.utils import (
     MODEL_NAME_TO_TYPE,
     RESULTS_DIR,
     build_schema,
+    dup_key,
+    find_prompt_words,
+    is_valid_word,
+    load_valid_words,
     word_var_names,
 )
 from sampling.continuation_prior import ContinuationLLMPrior
+
+
+class WordValidatingLLM(OpenAICompatLLM):
+    """OpenAICompatLLM with optional rejection sampling. With ``valid_words``,
+    draws containing words the scorer cannot embed are resampled; with
+    ``reject_duplicates``, draws repeating a word (within the draw, or against
+    the word_* values already shown in the prompt) are resampled too. Every
+    accept/reject is counted in ``reject_stats`` so acceptance rates can be
+    reported next to scores. Pass-through when neither option is set."""
+
+    def __init__(
+        self,
+        *args,
+        valid_words: set[str] | None = None,
+        reject_duplicates: bool = False,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.valid_words = valid_words
+        self.reject_duplicates = reject_duplicates
+        self.reject_stats: Counter = Counter()
+        self._stats_lock = threading.Lock()
+
+    def _count(self, *keys: str) -> None:
+        with self._stats_lock:
+            for key in keys:
+                self.reject_stats[key] += 1
+
+    def generate(self, prompt, schema=None, verbose=False, max_trials=10):
+        if self.valid_words is None and not self.reject_duplicates:
+            return super().generate(prompt, schema, verbose, max_trials)
+
+        forbidden = (
+            {dup_key(w) for w in find_prompt_words(prompt)} if self.reject_duplicates else set()
+        )
+        # 100 outer trials: whole-answer rejection of a 10-word direct draw
+        # needs a handful of attempts on base models (~90% per-word validity).
+        last_bad = None
+        for _ in range(100):
+            sample = super().generate(prompt, schema, verbose, max_trials)
+            if not isinstance(sample, dict):
+                return sample
+            words = [w for key, w in sample.items() if key.startswith("word_")]
+            bad_nonword = [
+                w
+                for w in words
+                if self.valid_words is not None and not is_valid_word(w, self.valid_words)
+            ]
+            bad_dup = []
+            if self.reject_duplicates:
+                seen = set(forbidden)
+                for w in words:
+                    key = dup_key(w)
+                    if key in seen:
+                        bad_dup.append(w)
+                    else:
+                        seen.add(key)
+            if not bad_nonword and not bad_dup:
+                self._count("accepted")
+                return sample
+            self._count("rejected")
+            if bad_nonword:
+                self._count("rejected_nonword")
+            if bad_dup:
+                self._count("rejected_duplicate")
+            last_bad = bad_nonword + bad_dup
+            print(f"Rejecting draw (nonwords={bad_nonword}, duplicates={bad_dup}); retrying...")
+        raise RuntimeError(
+            f"Rejection sampling failed after 100 trials; last rejected words: {last_bad}"
+        )
 
 
 class RecordedGibbsLLMPrior(GibbsLLMPrior):
@@ -120,6 +196,20 @@ def _to_word_lists(sample_dicts: list[dict[str, Any]], n_words: int) -> list[lis
     return [[sample[name] for name in names] for sample in sample_dicts]
 
 
+def _reject_meta(llm: Any, args: argparse.Namespace) -> dict[str, Any]:
+    """Acceptance diagnostics for the payload: a rejected score is only
+    meaningful alongside how hard the sampler had to be pushed to produce it."""
+    if not (args.reject_invalid or args.reject_duplicates):
+        return {}
+    stats = dict(getattr(llm, "reject_stats", {}) or {})
+    accepted = stats.get("accepted", 0)
+    rejected = stats.get("rejected", 0)
+    if accepted + rejected:
+        stats["acceptance_rate"] = accepted / (accepted + rejected)
+        print(f"Acceptance rate {stats['acceptance_rate']:.3f} ({stats})")
+    return {"reject_stats": stats}
+
+
 def _save(path: Path, payload: dict[str, Any]) -> None:
     # Atomic write so the exists()-based resume never sees a partial file.
     tmp_path = path.with_name(path.name + ".tmp")
@@ -145,6 +235,14 @@ def main(args: argparse.Namespace):
     n_per_chain = args.n_samples // args.n_chains
     reasoning_tag = "_reasoning" if args.manual_reasoning else ""
     reasoning_extra_tokens = 1024 if args.manual_reasoning else 0
+    reject_tag = ("_reject" if args.reject_invalid else "") + (
+        "_dedup" if args.reject_duplicates else ""
+    )
+    valid_words = load_valid_words() if args.reject_invalid else None
+    if valid_words is not None:
+        print(f"Rejection sampling against {len(valid_words)} scorable dictionary words.")
+    if args.reject_duplicates:
+        print("Rejecting duplicate words (within a draw and against the prompt context).")
     common_meta = {
         "model_name": args.model_name,
         "model_type": args.model_type,
@@ -153,12 +251,14 @@ def main(args: argparse.Namespace):
         "n_samples": args.n_samples,
         "n_chains": args.n_chains,
         "manual_reasoning": args.manual_reasoning,
+        "reject_invalid": args.reject_invalid,
+        "reject_duplicates": args.reject_duplicates,
         "seed": args.seed,
     }
 
     # 1. Direct sampling (single-pass, ancestral order word_1..word_N)
-    direct_out_path = (
-        out_dir / f"direct{reasoning_tag}_k{args.n_words}_nc{args.n_chains}_seed{args.seed}.json"
+    direct_out_path = out_dir / (
+        f"direct{reasoning_tag}{reject_tag}_k{args.n_words}_nc{args.n_chains}_seed{args.seed}.json"
     )
     if "direct" not in args.methods:
         pass
@@ -166,8 +266,10 @@ def main(args: argparse.Namespace):
         print(f"Results already exist at {direct_out_path}, skipping...")
     else:
         print("\n--- Running Direct Sampling ---")
-        llm = OpenAICompatLLM(
+        llm = WordValidatingLLM(
             **llm_common_kwargs,
+            valid_words=valid_words,
+            reject_duplicates=args.reject_duplicates,
             temperature=args.temperature,
             max_tokens=args.n_words * 24 + reasoning_extra_tokens,
         )
@@ -192,8 +294,9 @@ def main(args: argparse.Namespace):
         _save(
             direct_out_path,
             {
-                "method": f"direct{reasoning_tag}",
+                "method": f"direct{reasoning_tag}{reject_tag}",
                 **common_meta,
+                **_reject_meta(llm, args),
                 "samples": samples,
                 "llm_calls": args.n_samples,
                 "duration_seconds": time.time() - t_start,
@@ -202,7 +305,7 @@ def main(args: argparse.Namespace):
 
     # 2. Gibbs sampling (direct init, then single-word conditional resampling)
     gibbs_out_path = out_dir / (
-        f"gibbs{reasoning_tag}_k{args.n_words}_b{args.gibbs_block_size}"
+        f"gibbs{reasoning_tag}{reject_tag}_k{args.n_words}_b{args.gibbs_block_size}"
         f"_nc{args.n_chains}_seed{args.seed}.json"
     )
     if "gibbs" not in args.methods:
@@ -211,8 +314,10 @@ def main(args: argparse.Namespace):
         print(f"Results already exist at {gibbs_out_path}, skipping...")
     else:
         print("\n--- Running Gibbs Sampling ---")
-        llm = OpenAICompatLLM(
+        llm = WordValidatingLLM(
             **llm_common_kwargs,
+            valid_words=valid_words,
+            reject_duplicates=args.reject_duplicates,
             temperature=args.temperature,
             max_tokens=args.n_words * 24 + reasoning_extra_tokens,
         )
@@ -227,37 +332,51 @@ def main(args: argparse.Namespace):
             sweep=args.sweep,
         )
         t_start = time.time()
-        chain_results = gibbs_prior.sample_parallel(
-            n_per_chain,
-            [deepcopy(schema) for _ in range(args.n_chains)],
-            verbose=args.verbose,
-            pbar=True,
-        )
-        samples = _to_word_lists([s for s_chain in chain_results for s in s_chain], args.n_words)
-        chain_length = args.burn_in + n_per_chain * args.thinning
-        _save(
-            gibbs_out_path,
-            {
-                "method": f"gibbs{reasoning_tag}",
-                **common_meta,
-                "burn_in": args.burn_in,
-                "thinning": args.thinning,
-                "block_size": args.gibbs_block_size,
-                "sweep": args.sweep,
-                "samples": samples,
-                "chains": [
-                    _to_word_lists(gibbs_prior.chains[i], args.n_words)
-                    for i in range(args.n_chains)
-                ],
-                "resampled_keys": [gibbs_prior.resampled_keys[i] for i in range(args.n_chains)],
-                "llm_calls": args.n_chains * (1 + chain_length),
-                "duration_seconds": time.time() - t_start,
-            },
-        )
+        try:
+            chain_results = gibbs_prior.sample_parallel(
+                n_per_chain,
+                [deepcopy(schema) for _ in range(args.n_chains)],
+                verbose=args.verbose,
+                pbar=True,
+            )
+        except RuntimeError as e:
+            # A rejection cap hit means the kernel is degenerate under the
+            # constraints (acceptance collapsed); report and move on rather
+            # than killing the remaining methods.
+            print(f"Gibbs sampling aborted (degenerate kernel under rejection?): {e}")
+            _reject_meta(llm, args)
+            chain_results = None
+        if chain_results is None:
+            pass
+        else:
+            samples = _to_word_lists(
+                [s for s_chain in chain_results for s in s_chain], args.n_words
+            )
+            chain_length = args.burn_in + n_per_chain * args.thinning
+            _save(
+                gibbs_out_path,
+                {
+                    "method": f"gibbs{reasoning_tag}{reject_tag}",
+                    **common_meta,
+                    **_reject_meta(llm, args),
+                    "burn_in": args.burn_in,
+                    "thinning": args.thinning,
+                    "block_size": args.gibbs_block_size,
+                    "sweep": args.sweep,
+                    "samples": samples,
+                    "chains": [
+                        _to_word_lists(gibbs_prior.chains[i], args.n_words)
+                        for i in range(args.n_chains)
+                    ],
+                    "resampled_keys": [gibbs_prior.resampled_keys[i] for i in range(args.n_chains)],
+                    "llm_calls": args.n_chains * (1 + chain_length),
+                    "duration_seconds": time.time() - t_start,
+                },
+            )
 
     # 3. Direct continuation (field-by-field, ancestral order word_1..word_N)
-    direct_conti_out_path = (
-        out_dir / f"direct_continuation_k{args.n_words}_nc{args.n_chains}_seed{args.seed}.json"
+    direct_conti_out_path = out_dir / (
+        f"direct_continuation{reject_tag}_k{args.n_words}_nc{args.n_chains}_seed{args.seed}.json"
     )
     if "direct_continuation" not in args.methods:
         pass
@@ -267,6 +386,8 @@ def main(args: argparse.Namespace):
         print("\n--- Running Direct Continuation Sampling ---")
         llm = ContinuationWordLLM(
             **llm_common_kwargs,
+            valid_words=valid_words,
+            reject_duplicates=args.reject_duplicates,
             temperature=args.temperature,
             max_tokens=32,
         )
@@ -283,8 +404,9 @@ def main(args: argparse.Namespace):
         _save(
             direct_conti_out_path,
             {
-                "method": "direct_continuation",
+                "method": f"direct_continuation{reject_tag}",
                 **common_meta,
+                **_reject_meta(llm, args),
                 "samples": samples,
                 "llm_calls": args.n_samples * args.n_words,
                 "duration_seconds": time.time() - t_start,
@@ -293,7 +415,7 @@ def main(args: argparse.Namespace):
 
     # 4. Gibbs continuation (field-by-field conditionals inside the same scan)
     gibbs_conti_out_path = out_dir / (
-        f"gibbs_continuation_k{args.n_words}_b{args.gibbs_block_size}"
+        f"gibbs_continuation{reject_tag}_k{args.n_words}_b{args.gibbs_block_size}"
         f"_nc{args.n_chains}_seed{args.seed}.json"
     )
     if "gibbs_continuation" not in args.methods:
@@ -304,6 +426,8 @@ def main(args: argparse.Namespace):
         print("\n--- Running Gibbs Continuation Sampling ---")
         llm = ContinuationWordLLM(
             **llm_common_kwargs,
+            valid_words=valid_words,
+            reject_duplicates=args.reject_duplicates,
             temperature=args.temperature,
             max_tokens=32,
         )
@@ -317,33 +441,45 @@ def main(args: argparse.Namespace):
             sweep=args.sweep,
         )
         t_start = time.time()
-        chain_results = gibbs_prior.sample_parallel(
-            n_per_chain,
-            [deepcopy(schema) for _ in range(args.n_chains)],
-            verbose=args.verbose,
-            pbar=True,
-        )
-        samples = _to_word_lists([s for s_chain in chain_results for s in s_chain], args.n_words)
-        chain_length = args.burn_in + n_per_chain * args.thinning
-        _save(
-            gibbs_conti_out_path,
-            {
-                "method": "gibbs_continuation",
-                **common_meta,
-                "burn_in": args.burn_in,
-                "thinning": args.thinning,
-                "block_size": args.gibbs_block_size,
-                "sweep": args.sweep,
-                "samples": samples,
-                "chains": [
-                    _to_word_lists(gibbs_prior.chains[i], args.n_words)
-                    for i in range(args.n_chains)
-                ],
-                "resampled_keys": [gibbs_prior.resampled_keys[i] for i in range(args.n_chains)],
-                "llm_calls": args.n_chains * (args.n_words + chain_length * args.gibbs_block_size),
-                "duration_seconds": time.time() - t_start,
-            },
-        )
+        try:
+            chain_results = gibbs_prior.sample_parallel(
+                n_per_chain,
+                [deepcopy(schema) for _ in range(args.n_chains)],
+                verbose=args.verbose,
+                pbar=True,
+            )
+        except RuntimeError as e:
+            print(f"Gibbs continuation aborted (degenerate kernel under rejection?): {e}")
+            _reject_meta(llm, args)
+            chain_results = None
+        if chain_results is None:
+            pass
+        else:
+            samples = _to_word_lists(
+                [s for s_chain in chain_results for s in s_chain], args.n_words
+            )
+            chain_length = args.burn_in + n_per_chain * args.thinning
+            _save(
+                gibbs_conti_out_path,
+                {
+                    "method": f"gibbs_continuation{reject_tag}",
+                    **common_meta,
+                    **_reject_meta(llm, args),
+                    "burn_in": args.burn_in,
+                    "thinning": args.thinning,
+                    "block_size": args.gibbs_block_size,
+                    "sweep": args.sweep,
+                    "samples": samples,
+                    "chains": [
+                        _to_word_lists(gibbs_prior.chains[i], args.n_words)
+                        for i in range(args.n_chains)
+                    ],
+                    "resampled_keys": [gibbs_prior.resampled_keys[i] for i in range(args.n_chains)],
+                    "llm_calls": args.n_chains
+                    * (args.n_words + chain_length * args.gibbs_block_size),
+                    "duration_seconds": time.time() - t_start,
+                },
+            )
 
 
 if __name__ == "__main__":
@@ -376,6 +512,23 @@ if __name__ == "__main__":
         action="store_true",
         help="Optionally add a free-text reasoning field to the JSON schema for "
         "direct/gibbs (any instruct model; continuation methods are unaffected).",
+    )
+    parser.add_argument(
+        "--reject_invalid",
+        action="store_true",
+        help="Rejection-sample all methods against the scorer's lexicon: draws "
+        "containing words the scorer cannot embed are resampled. Restricting "
+        "every conditional to dictionary words cuts the base-model feedback "
+        "loop where non-words in context breed more non-words.",
+    )
+    parser.add_argument(
+        "--reject_duplicates",
+        action="store_true",
+        help="Rejection-sample draws that repeat a word (within a draw, or "
+        "against the words already in the prompt context). Hyphen-insensitive, "
+        "mirroring the scorer's uniqueness rule. Watch the reported acceptance "
+        "rate: a collapsed rate means the kernel is degenerate and the score "
+        "reflects the constraints, not the model.",
     )
 
     parser.add_argument(

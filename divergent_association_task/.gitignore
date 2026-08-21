@@ -1,2 +1,5 @@
 assets/
 results/
+REPORT.md
+sbatch.sh
+related_works/

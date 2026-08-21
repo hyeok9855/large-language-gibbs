@@ -50,6 +50,7 @@ def summarize_file(model: dat.Model, path: Path, results_dir: Path) -> dict | No
         "max": float(np.max(valid)) if valid else None,
         "llm_calls": data.get("llm_calls"),
         "duration_seconds": data.get("duration_seconds"),
+        "reject_stats": data.get("reject_stats"),
         "top_words": word_counts.most_common(10),
         "word_counts": dict(word_counts),
         "scores": scores,
@@ -76,6 +77,9 @@ def pool_groups(entries: list[dict]) -> list[dict]:
         words = Counter()
         for entry in group:
             words.update(entry["word_counts"])
+        accepted = sum((entry["reject_stats"] or {}).get("accepted", 0) for entry in group)
+        rejected = sum((entry["reject_stats"] or {}).get("rejected", 0) for entry in group)
+        acceptance_rate = accepted / (accepted + rejected) if accepted + rejected else None
         pooled.append(
             {
                 "model_name": model_name,
@@ -86,6 +90,7 @@ def pool_groups(entries: list[dict]) -> list[dict]:
                 "n_valid": len(scores),
                 "mean": float(np.mean(scores)) if scores else None,
                 "std": float(np.std(scores)) if scores else None,
+                "acceptance_rate": acceptance_rate,
                 "seed_means": [entry["mean"] for entry in group],
                 "top_words": words.most_common(10),
             }
@@ -221,18 +226,25 @@ def main(args: argparse.Namespace):
 
     pooled = pool_groups(entries)
 
-    header = f"{'method':<20} {'model':<28} {'temp':>5} {'seeds':>6} {'valid':>10} {'DAT':>18}"
+    header = (
+        f"{'method':<26} {'model':<28} {'temp':>5} {'seeds':>6} "
+        f"{'valid':>10} {'accept':>7} {'DAT':>18}"
+    )
     print("\n" + header + "\n" + "-" * len(header))
     for group in pooled:
         valid_cell = f"{group['n_valid']}/{group['n_answers']}"
+        accept_cell = (
+            f"{group['acceptance_rate']:.3f}" if group.get("acceptance_rate") is not None else "-"
+        )
         dat_cell = (
             f"{group['mean']:.2f} +/- {group['std']:.2f}"
             if group["mean"] is not None
             else "(no valid answers)"
         )
         print(
-            f"{group['method']:<20} {group['model_name'].split('/')[-1]:<28} "
-            f"{group['temperature']:>5} {len(group['seeds']):>6} {valid_cell:>10} {dat_cell:>18}"
+            f"{group['method']:<26} {group['model_name'].split('/')[-1]:<28} "
+            f"{group['temperature']:>5} {len(group['seeds']):>6} {valid_cell:>10} "
+            f"{accept_cell:>7} {dat_cell:>18}"
         )
     print(f"\nHuman average (Olson et al. 2021): {HUMAN_MEAN_DAT}")
 

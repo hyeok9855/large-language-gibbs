@@ -8,8 +8,11 @@ tokens of the partial JSON object are constrained to ` ?"<word>"`.
 
 import json
 import re
+import threading
+from collections import Counter
 from typing import Any
 
+from divergent_association_task.utils import dup_key, find_prompt_words, is_valid_word
 from sampling.continuation_llm import ContinuationOpenAICompatLLM
 
 
@@ -35,7 +38,31 @@ def word_regex(subschema: dict[str, Any]) -> str:
 
 
 class ContinuationWordLLM(ContinuationOpenAICompatLLM):
-    """Continuation client extended with pattern-constrained string fields."""
+    """Continuation client extended with pattern-constrained string fields.
+
+    With ``valid_words`` set, draws outside the lexicon are rejected and
+    resampled (the conditional restricted to scorable dictionary words); with
+    ``reject_duplicates``, draws repeating a word already in the prompt's
+    partial JSON are rejected too. Every accept/reject is counted in
+    ``reject_stats`` so acceptance rates can be reported next to scores."""
+
+    def __init__(
+        self,
+        *args,
+        valid_words: set[str] | None = None,
+        reject_duplicates: bool = False,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.valid_words = valid_words
+        self.reject_duplicates = reject_duplicates
+        self.reject_stats: Counter = Counter()
+        self._stats_lock = threading.Lock()
+
+    def _count(self, *keys: str) -> None:
+        with self._stats_lock:
+            for key in keys:
+                self.reject_stats[key] += 1
 
     def generate(
         self,
@@ -49,6 +76,9 @@ class ContinuationWordLLM(ContinuationOpenAICompatLLM):
         if max_trials < 1:
             raise ValueError("max_trials must be at least 1.")
 
+        forbidden = (
+            {dup_key(w) for w in find_prompt_words(prompt)} if self.reject_duplicates else set()
+        )
         for i in range(max_trials):
             try:
                 content = self._continuation_generate(
@@ -57,6 +87,13 @@ class ContinuationWordLLM(ContinuationOpenAICompatLLM):
                 word = json.loads(content.strip().rstrip(",}").strip())
                 if not re.fullmatch(subschema["pattern"], word):
                     raise ValueError(f"Word {word!r} does not match {subschema['pattern']}")
+                if self.valid_words is not None and not is_valid_word(word, self.valid_words):
+                    self._count("rejected", "rejected_nonword")
+                    raise ValueError(f"Rejecting non-dictionary word {word!r}")
+                if self.reject_duplicates and dup_key(word) in forbidden:
+                    self._count("rejected", "rejected_duplicate")
+                    raise ValueError(f"Rejecting duplicate word {word!r}")
+                self._count("accepted")
                 return word
             except Exception as exc:
                 print(f"Error during field value generation:\n{exc}")

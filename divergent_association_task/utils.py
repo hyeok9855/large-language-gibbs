@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 # All instruct-type models run the same constrained-decoding protocol;
@@ -19,6 +20,42 @@ MODEL_NAME_TO_TYPE = {
 DAT_DIR = Path(__file__).parent
 ASSETS_DIR = DAT_DIR / "assets"
 RESULTS_DIR = DAT_DIR / "results"
+VALID_WORDS_PATH = ASSETS_DIR / "valid_words.txt"
+
+
+def load_valid_words() -> set[str]:
+    """Lexicon for --reject_invalid: exactly the words the scorer can embed
+    (dictionary intersected with GloVe, i.e. dat.Model().vectors). Built once
+    from the scoring assets and cached as a small text file."""
+    if not VALID_WORDS_PATH.exists():
+        from divergent_association_task import dat  # heavy import: scans GloVe once
+
+        VALID_WORDS_PATH.write_text("\n".join(sorted(dat.Model().vectors)) + "\n")
+    return set(VALID_WORDS_PATH.read_text().split())
+
+
+def is_valid_word(word: str, valid_words: set[str]) -> bool:
+    """dat.Model.validate semantics for words that already match WORD_PATTERN
+    (lowercase, no stray characters): direct hit, or hyphens dropped."""
+    return word in valid_words or ("-" in word and word.replace("-", "") in valid_words)
+
+
+def dup_key(word: str) -> str:
+    """Canonical form for duplicate detection, mirroring the scorer's candidate
+    logic for pattern-clean words: hyphens do not make a word distinct."""
+    return word.replace("-", "")
+
+
+_PROMPT_WORD_RE = re.compile(r'"word_\d+": "([a-z-]+)"')
+
+
+def find_prompt_words(prompt: str | tuple[str, str]) -> list[str]:
+    """word_* values already shown in a prompt (the observed JSON in chat
+    conditionals, or the partial-JSON prefill in continuation prompts); both
+    are built with json.dumps, so the quoting is exact."""
+    text = prompt[1] if isinstance(prompt, tuple) else prompt
+    return _PROMPT_WORD_RE.findall(text)
+
 
 # Single lowercase English word (letters, optional internal hyphens), 2-20 chars.
 # Enforced by vLLM structured outputs; the DAT scorer re-validates against its

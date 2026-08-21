@@ -69,6 +69,12 @@ def parse_gpus(value: str) -> list[int]:
     return gpus
 
 
+def llm_data_temperature(sampling_method: str, manual_reasoning: bool) -> float:
+    if sampling_method == "gambling_gibbs" and not manual_reasoning:
+        return 0.0
+    return 1.0
+
+
 def build_data_path(
     dataset_name: str,
     sampling_method: str,
@@ -77,7 +83,7 @@ def build_data_path(
     manual_reasoning: bool,
 ) -> Path:
     params = DATASET_PARAMS[dataset_name]
-    temp = 0.0 if sampling_method == "gambling_gibbs" else 1.0
+    temp = llm_data_temperature(sampling_method, manual_reasoning)
     filename = get_llm_data_run_name(
         sampling_method=sampling_method,
         temperature=temp,
@@ -106,7 +112,7 @@ def build_llm_exp_name(
 ) -> str:
     model_slug = model_name.replace("/", "--")
     reasoning_suffix = "_reasoning" if manual_reasoning else ""
-    temp = 0.0 if sampling_method == "gambling_gibbs" else 1.0
+    temp = llm_data_temperature(sampling_method, manual_reasoning)
     return (
         f"{model_slug}/{sampling_method}{reasoning_suffix}"
         f"_temp{temp}_base{base_prior_name}_gamma{gamma}_sd{seed}"
