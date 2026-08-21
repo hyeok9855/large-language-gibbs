@@ -27,8 +27,6 @@ PORT=$4
 manual_reasoning=${5:-false}
 nseeds=${6:-3}
 
-# Whether manual reasoning actually applies is decided in generate_llm_data.py
-# based on the model type (see MODEL_NAME_TO_TYPE).
 if [ "$manual_reasoning" = true ]; then
     manual_reasoning_option="--manual_reasoning"
 else
@@ -48,7 +46,12 @@ for dataset in ${datasets[@]}; do
     esac
 
     for sampling_method in ${sampling_methods[@]}; do
-        if [ "$sampling_method" == "gambling_gibbs" ]; then
+        if [ "$manual_reasoning" = true ] && [[ "$sampling_method" == *continuation* ]]; then
+            echo "Skipping $sampling_method: --manual_reasoning is not supported for continuation methods."
+            continue
+        fi
+
+        if [ "$sampling_method" == "gambling_gibbs" ] && [ "$manual_reasoning" != true ]; then
             temp=0.0
         else
             temp=1.0

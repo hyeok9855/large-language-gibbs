@@ -1,5 +1,5 @@
 # Structured Inference with Large Language Gibbs
-This repository contains the code for the paper "[Structured Inference with Large Language Gibbs](https://arxiv.org/abs/2606.19264)" (Under review, accepted to [ICML 2026 SPIGM Workshop](https://openreview.net/forum?id=opXYpVQqfq)).
+This repository contains the code for the paper "[Structured Inference with Large Language Gibbs](https://arxiv.org/abs/2606.19264)" (EMNLP 2026).
 
 <p align="center"><img src="assets/fig1.png" width="1000"/></p>
 

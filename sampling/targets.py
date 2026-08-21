@@ -1,21 +1,4 @@
-"""Registry of target distributions for the sampling experiments.
-
-A target owns everything that varies between distributions: its CLI parameters,
-the natural-language description used in prompts, the JSON schema for the object
-the LLM should return, the results directory name, and the reference density
-drawn over the histograms.
-
-Adding a univariate distribution means adding one ``Target`` here;
-``run.py``, ``templates/scalar.py`` and ``make_plot.py`` stay untouched.
-Joint targets (``random_walk``, ``multinomial``) also supply named-coordinate
-schemas and plot helpers; their prompts live in ``templates/joint.py``.
-
-Unbounded targets are truncated to a hardcoded window of ``SIGMA_REACH``
-standard deviations (Gaussian and mixture components: mean ± 4σ; Poisson:
-0 … ceil(λ + 4√λ)). Schema bounds and plot axes use the same window. The
-red overlay is the untruncated density/PMF restricted to that window, not
-the truncated-and-renormalised law (at 4σ the missing mass is ~10⁻⁴).
-"""
+"""Registry of target distributions for the sampling experiments."""
 
 from __future__ import annotations
 
@@ -34,9 +17,12 @@ NUMBER = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
 NUMBER_LIST = rf"(?:{NUMBER})(?:,(?:{NUMBER}))*"
 KVAR_METHODS = ("direct", "gibbs", "barker_gibbs", "gambling_gibbs")
 
-# Shared truncation window for unbounded targets. Schema and histograms both
-# use this so sampling support and the plotted axes cannot drift apart.
-SIGMA_REACH = 4.0
+# Truncation windows for unbounded targets, in sigmas.
+# SCHEMA_REACH bounds what the model may emit
+# PLOT_REACH bounds what the figures show, and off-plot draws go to overflow bin.
+SCHEMA_REACH = 6.0
+PLOT_REACH = 4.0
+assert SCHEMA_REACH >= PLOT_REACH
 UNIFORM_N_BINS = 50
 
 
@@ -198,8 +184,8 @@ def _gaussian_validate(args: Namespace) -> None:
         raise ValueError(f"--std must be > 0, got {args.std}.")
 
 
-def _gaussian_bounds(mean: float, std: float) -> tuple[float, float]:
-    return mean - SIGMA_REACH * std, mean + SIGMA_REACH * std
+def _gaussian_bounds(mean: float, std: float, reach: float = SCHEMA_REACH) -> tuple[float, float]:
+    return mean - reach * std, mean + reach * std
 
 
 def _normal_pdf(x: np.ndarray, mean: float, std: float) -> np.ndarray:
@@ -207,12 +193,12 @@ def _normal_pdf(x: np.ndarray, mean: float, std: float) -> np.ndarray:
 
 
 def _gaussian_bins(params: dict[str, Any]) -> np.ndarray:
-    lo, hi = _gaussian_bounds(params["mean"], params["std"])
+    lo, hi = _gaussian_bounds(params["mean"], params["std"], PLOT_REACH)
     return np.linspace(lo, hi, 51)
 
 
 def _gaussian_reference(params: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
-    lo, hi = _gaussian_bounds(params["mean"], params["std"])
+    lo, hi = _gaussian_bounds(params["mean"], params["std"], PLOT_REACH)
     x = np.linspace(lo, hi, 200)
     return x, _normal_pdf(x, params["mean"], params["std"])
 
@@ -276,10 +262,10 @@ def _mixture_description(args: Namespace) -> str:
     return f"a mixture of {len(args.mixture_means)} Gaussian distributions ({components})"
 
 
-def _mixture_bounds(params: dict[str, Any]) -> tuple[float, float]:
+def _mixture_bounds(params: dict[str, Any], reach: float = SCHEMA_REACH) -> tuple[float, float]:
     means, stds = params["means"], params["stds"]
-    lo = min(m - SIGMA_REACH * s for m, s in zip(means, stds))
-    hi = max(m + SIGMA_REACH * s for m, s in zip(means, stds))
+    lo = min(m - reach * s for m, s in zip(means, stds))
+    hi = max(m + reach * s for m, s in zip(means, stds))
     return lo, hi
 
 
@@ -290,12 +276,12 @@ def _mixture_schema(args: Namespace) -> dict[str, Any]:
 
 
 def _mixture_bins(params: dict[str, Any]) -> np.ndarray:
-    lo, hi = _mixture_bounds(params)
+    lo, hi = _mixture_bounds(params, PLOT_REACH)
     return np.linspace(lo, hi, 51)
 
 
 def _mixture_reference(params: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
-    lo, hi = _mixture_bounds(params)
+    lo, hi = _mixture_bounds(params, PLOT_REACH)
     x = np.linspace(lo, hi, 400)
     y = np.zeros_like(x)
     for w, m, s in zip(params["weights"], params["means"], params["stds"]):
@@ -396,14 +382,14 @@ def _poisson_validate(args: Namespace) -> None:
         raise ValueError(f"--rate must be > 0, got {args.rate}.")
 
 
-def _poisson_max(rate: float) -> int:
-    """Upper endpoint: λ + 4√λ, the Poisson analogue of Gaussian ±4σ."""
-    return int(math.ceil(rate + SIGMA_REACH * math.sqrt(rate)))
+def _poisson_max(rate: float, reach: float = SCHEMA_REACH) -> int:
+    """Upper endpoint λ + reach*sqrt(λ), the Poisson analogue of Gaussian ±reach*σ."""
+    return int(math.ceil(rate + reach * math.sqrt(rate)))
 
 
 def _poisson_reference(params: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
     rate = params["rate"]
-    k = np.arange(0, _poisson_max(rate) + 1)
+    k = np.arange(0, _poisson_max(rate, PLOT_REACH) + 1)
     pmf = np.array([math.exp(-rate) * rate ** int(i) / math.factorial(int(i)) for i in k])
     return k.astype(float), pmf
 
@@ -425,7 +411,7 @@ POISSON = Target(
         if (m := re.fullmatch(rf"poisson_rate({NUMBER})", dirname))
         else None
     ),
-    bin_edges=lambda params: _integer_bins(0, _poisson_max(params["rate"])),
+    bin_edges=lambda params: _integer_bins(0, _poisson_max(params["rate"], PLOT_REACH)),
     reference=_poisson_reference,
 )
 
@@ -476,8 +462,8 @@ def random_walk_coordinate_schema(args: Namespace) -> dict[str, dict[str, Any]]:
     props: dict[str, dict[str, Any]] = {}
     for i in range(1, args.gibbs_k_vars + 1):
         std = _random_walk_std(i, args.rw_x1_var, args.rw_step_var)
-        lo = round(-SIGMA_REACH * std, 4)
-        hi = round(SIGMA_REACH * std, 4)
+        lo = round(-SCHEMA_REACH * std, 4)
+        hi = round(SCHEMA_REACH * std, 4)
         props[f"X{i}"] = {"type": "number", "minimum": lo, "maximum": hi}
     return props
 
@@ -499,13 +485,13 @@ def _random_walk_increments(
 
 def _random_walk_bins(params: dict[str, Any]) -> np.ndarray:
     std = math.sqrt(params["step_var"])
-    lo, hi = -SIGMA_REACH * std, SIGMA_REACH * std
+    lo, hi = -PLOT_REACH * std, PLOT_REACH * std
     return np.linspace(lo, hi, 51)
 
 
 def _random_walk_reference(params: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
     std = math.sqrt(params["step_var"])
-    lo, hi = -SIGMA_REACH * std, SIGMA_REACH * std
+    lo, hi = -PLOT_REACH * std, PLOT_REACH * std
     x = np.linspace(lo, hi, 200)
     return x, _normal_pdf(x, 0.0, std)
 
@@ -573,11 +559,11 @@ def _multinomial_description(args: Namespace) -> str:
     )
 
 
-def _multinomial_margin_hi(n_trials: int, n_vars: int) -> int:
+def _multinomial_margin_hi(n_trials: int, n_vars: int, reach: float = PLOT_REACH) -> int:
     p = 1.0 / n_vars
     mean = n_trials * p
     std = math.sqrt(n_trials * p * (1.0 - p))
-    return min(n_trials, int(math.ceil(mean + SIGMA_REACH * std)))
+    return min(n_trials, int(math.ceil(mean + reach * std)))
 
 
 def _multinomial_pooled_values(

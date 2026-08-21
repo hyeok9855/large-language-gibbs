@@ -123,7 +123,7 @@ run_config --target uniform --minnum -50 --maxnum 49
 # Gaussian distributions
 run_config --target gaussian --mean 0.0 --std 1.0
 run_config --target gaussian --mean -2.5 --std 1.0
-run_config --target gaussian --mean 4.35 --std 1.09
+run_config --target gaussian --mean 70.0 --std 3.0
 
 # Multimodal: can the chain reach both modes, and in the right proportion?
 run_config --target mixture --mixture_means -2.0 2.0 --mixture_stds 0.5 0.5 --mixture_weights 0.5 0.5

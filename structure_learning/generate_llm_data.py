@@ -2,7 +2,6 @@ import json
 import math
 import os
 import random
-import warnings
 from argparse import ArgumentParser, Namespace
 from copy import deepcopy
 from typing import Any
@@ -140,6 +139,8 @@ def main(args: Namespace) -> None:
             # generation schema (see PinnedLLMPrior), so forced decoding emits them as a
             # prefix and the resampled features are generated as a continuation of one
             # natural JSON object.
+            if args.manual_reasoning:
+                raise ValueError("Manual reasoning is not supported for continuation samplers.")
 
             def llm_template(schema: dict[str, Any], observed: dict[str, Any] | None = None) -> str:
                 observed = observed or {}
@@ -168,14 +169,9 @@ def main(args: Namespace) -> None:
             llm_prior = PinnedLLMPrior(
                 llm=llm,
                 template=llm_template,
-                manual_reasoning=args.manual_reasoning,
                 feature_schemas=full_schema["properties"],
             )
 
-            if args.manual_reasoning:
-                llm_prior.reasoning_prompt = llm_prior.reasoning_prompt.replace(
-                    "step-by-step", "brief"
-                )
             if args.sampling_method == "direct_continuation":
                 prior = llm_prior
             else:  # gibbs_continuation
@@ -363,17 +359,19 @@ if __name__ == "__main__":
 
     args.model_type = MODEL_NAME_TO_TYPE[args.model_name]
 
-    # Manual reasoning is only supported for instruct models.
-    if args.manual_reasoning and args.model_type != "instruct":
-        warnings.warn(
-            f"Manual reasoning is only supported for instruct models; "
-            f"disabling it for {args.model_type} model '{args.model_name}'."
-        )
-        args.manual_reasoning = False
-
-    if args.manual_reasoning and args.temperature == 0.0:
-        warnings.warn("Manual reasoning requires temperature > 0.0, setting temperature to 1.0")
-        args.temperature = 1.0
+    if args.manual_reasoning:
+        if args.model_type != "instruct":
+            raise ValueError(
+                f"--manual_reasoning is only supported for instruct models; got "
+                f"{args.model_type} model {args.model_name!r}."
+            )
+        if "continuation" in args.sampling_method:
+            raise ValueError(
+                f"--manual_reasoning is not supported for continuation samplers "
+                f"({args.sampling_method!r})."
+            )
+        if args.temperature <= 0.0:
+            raise ValueError("--manual_reasoning requires temperature > 0.0.")
 
     main(args)
     print("Done!")

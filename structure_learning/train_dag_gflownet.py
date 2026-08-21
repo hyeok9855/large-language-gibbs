@@ -166,6 +166,8 @@ def iter_experiments(args: argparse.Namespace) -> list[Experiment]:
             for seed in args.seeds:
                 for dataset_name in args.datasets:
                     for sampling_method in args.llm_data_sampling_methods:
+                        if args.manual_reasoning and "continuation" in sampling_method:
+                            continue
                         experiments.append(
                             Experiment(
                                 dataset_name=dataset_name,
