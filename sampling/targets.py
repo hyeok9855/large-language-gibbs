@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import re
 from argparse import ArgumentParser, Namespace
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,10 +18,8 @@ NUMBER_LIST = rf"(?:{NUMBER})(?:,(?:{NUMBER}))*"
 KVAR_METHODS = ("direct", "gibbs", "barker_gibbs", "gambling_gibbs")
 
 # Truncation windows for unbounded targets, in sigmas.
-# SCHEMA_REACH bounds what the model may emit
-# PLOT_REACH bounds what the figures show, and off-plot draws go to overflow bin.
-SCHEMA_REACH = 6.0
-PLOT_REACH = 4.0
+SCHEMA_REACH = 4.0  # what the model may emit
+PLOT_REACH = 4.0  # what the figures show, and off-plot draws go to overflow bin.
 assert SCHEMA_REACH >= PLOT_REACH
 UNIFORM_N_BINS = 50
 
@@ -43,7 +41,6 @@ class Target:
     """Everything the sampler and the plots need to know about a distribution."""
 
     name: str
-    discrete: bool
     add_arguments: Callable[[ArgumentParser], None]
     description: Callable[[Namespace], str]
     value_schema: Callable[[Namespace], dict[str, Any]]
@@ -53,12 +50,6 @@ class Target:
     reference: Callable[[dict[str, Any]], tuple[np.ndarray, np.ndarray]]
     validate: Callable[[Namespace], None]
     value_formatter: Callable[[Any], Any] = lambda v: v
-    # Joint targets: one named coordinate per dimension, not iid copies of a scalar.
-    is_joint: bool = False
-    samples_to_plot: Callable[[Sequence[dict[str, Any]], dict[str, Any]], list[float]] | None = None
-
-    def describe(self, args: Namespace) -> str:
-        return self.description(args)
 
     def format_observed(self, observed: dict[str, Any]) -> dict[str, Any]:
         return {key: self.value_formatter(value) for key, value in observed.items()}
@@ -70,11 +61,6 @@ class Target:
     def object_schema(self, args: Namespace, method: str) -> dict[str, Any]:
         """JSON schema for the object the LLM should return for ``method``."""
         if method in ("indep", "batch"):
-            if self.is_joint:
-                raise ValueError(
-                    f"{method} sampling is a univariate baseline and is not defined for "
-                    f"joint target {self.name!r}."
-                )
             value = self.value_schema(args)
             if method == "indep":
                 properties: dict[str, Any] = {"sample": value}
@@ -89,28 +75,13 @@ class Target:
                 }
 
         elif method in KVAR_METHODS:
-            if self.name == "random_walk":
-                properties = random_walk_coordinate_schema(args)
-            else:
-                properties = {
-                    name: self.value_schema(args) for name in indexed_var_names(args.gibbs_k_vars)
-                }
+            properties = {
+                name: self.value_schema(args) for name in indexed_var_names(args.gibbs_k_vars)
+            }
         else:
             raise ValueError(f"Invalid method: {method}")
 
         return {"type": "object", "properties": properties, "required": list(properties)}
-
-    def histogram_values(self, data: Sequence[Any], params: dict[str, Any]) -> list[float]:
-        if data and isinstance(data[0], dict):
-            if self.samples_to_plot is None:
-                raise ValueError(f"Joint target {self.name!r} is missing samples_to_plot.")
-            return self.samples_to_plot(data, params)
-        return [float(value) for value in data]
-
-    def mixing_values(self, data: Sequence[Any], params: dict[str, Any]) -> list[float]:
-        if data and isinstance(data[0], dict):
-            return [float(sample["X1"]) for sample in data]
-        return [float(value) for value in data]
 
 
 # --- Uniform (discrete) -----------------------------------------------------
@@ -148,7 +119,6 @@ def _uniform_reference(params: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
 
 UNIFORM = Target(
     name="uniform",
-    discrete=True,
     add_arguments=_uniform_args,
     validate=_uniform_validate,
     description=lambda args: (
@@ -205,7 +175,6 @@ def _gaussian_reference(params: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]
 
 GAUSSIAN = Target(
     name="gaussian",
-    discrete=False,
     add_arguments=_gaussian_args,
     validate=_gaussian_validate,
     description=lambda args: (
@@ -305,7 +274,6 @@ def _mixture_parse(dirname: str) -> dict[str, Any] | None:
 
 MIXTURE = Target(
     name="mixture",
-    discrete=False,
     add_arguments=_mixture_args,
     validate=_mixture_validate,
     description=_mixture_description,
@@ -351,7 +319,6 @@ def _binomial_reference(params: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]
 
 BINOMIAL = Target(
     name="binomial",
-    discrete=True,
     add_arguments=_binomial_args,
     validate=_binomial_validate,
     description=lambda args: (
@@ -396,7 +363,6 @@ def _poisson_reference(params: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
 
 POISSON = Target(
     name="poisson",
-    discrete=True,
     add_arguments=_poisson_args,
     validate=_poisson_validate,
     description=lambda args: f"a Poisson distribution with rate {args.rate}",
@@ -416,203 +382,8 @@ POISSON = Target(
 )
 
 
-# --- Gaussian random walk (joint, local dependence) -------------------------
-
-
-def _random_walk_args(parser: ArgumentParser) -> None:
-    parser.add_argument(
-        "--rw_x1_var",
-        type=float,
-        default=1.0,
-        help="Variance of X1 in the Gaussian random walk.",
-    )
-    parser.add_argument(
-        "--rw_step_var",
-        type=float,
-        default=0.5,
-        help="Variance of each increment Xi | X_{i-1} in the Gaussian random walk.",
-    )
-
-
-def _random_walk_validate(args: Namespace) -> None:
-    if args.rw_x1_var <= 0:
-        raise ValueError(f"--rw_x1_var must be > 0, got {args.rw_x1_var}.")
-    if args.rw_step_var <= 0:
-        raise ValueError(f"--rw_step_var must be > 0, got {args.rw_step_var}.")
-    if args.gibbs_k_vars < 2:
-        raise ValueError(f"random_walk needs --gibbs_k_vars >= 2, got {args.gibbs_k_vars}.")
-
-
-def _random_walk_description(args: Namespace) -> str:
-    d = args.gibbs_k_vars
-    return (
-        f"a Gaussian random walk on (X1, ..., X{d}), where X1 is drawn from a "
-        f"Gaussian distribution with mean 0 and variance {args.rw_x1_var}, "
-        f"and each later Xi (for i = 2, ..., {d}) is drawn from a Gaussian "
-        f"distribution with mean equal to X_{{i-1}} and variance {args.rw_step_var}"
-    )
-
-
-def _random_walk_std(index: int, x1_var: float, step_var: float) -> float:
-    """Marginal standard deviation of X_index (1-based)."""
-    return math.sqrt(x1_var + (index - 1) * step_var)
-
-
-def random_walk_coordinate_schema(args: Namespace) -> dict[str, dict[str, Any]]:
-    props: dict[str, dict[str, Any]] = {}
-    for i in range(1, args.gibbs_k_vars + 1):
-        std = _random_walk_std(i, args.rw_x1_var, args.rw_step_var)
-        lo = round(-SCHEMA_REACH * std, 4)
-        hi = round(SCHEMA_REACH * std, 4)
-        props[f"X{i}"] = {"type": "number", "minimum": lo, "maximum": hi}
-    return props
-
-
-def _random_walk_value_schema(_args: Namespace) -> dict[str, Any]:
-    raise ValueError("random_walk does not use value_schema; use object_schema.")
-
-
-def _random_walk_increments(
-    samples: Sequence[dict[str, Any]], params: dict[str, Any]
-) -> list[float]:
-    names = indexed_var_names(params["n_vars"])
-    increments: list[float] = []
-    for sample in samples:
-        values = [float(sample[name]) for name in names]
-        increments.extend(later - earlier for earlier, later in zip(values, values[1:]))
-    return increments
-
-
-def _random_walk_bins(params: dict[str, Any]) -> np.ndarray:
-    std = math.sqrt(params["step_var"])
-    lo, hi = -PLOT_REACH * std, PLOT_REACH * std
-    return np.linspace(lo, hi, 51)
-
-
-def _random_walk_reference(params: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
-    std = math.sqrt(params["step_var"])
-    lo, hi = -PLOT_REACH * std, PLOT_REACH * std
-    x = np.linspace(lo, hi, 200)
-    return x, _normal_pdf(x, 0.0, std)
-
-
-def _random_walk_parse(dirname: str) -> dict[str, Any] | None:
-    m = re.fullmatch(
-        rf"random_walk_d(\d+)_x1var({NUMBER})_stepvar({NUMBER})",
-        dirname,
-    )
-    if not m:
-        return None
-    return {
-        "n_vars": int(m.group(1)),
-        "x1_var": float(m.group(2)),
-        "step_var": float(m.group(3)),
-    }
-
-
-RANDOM_WALK = Target(
-    name="random_walk",
-    discrete=False,
-    is_joint=True,
-    add_arguments=_random_walk_args,
-    validate=_random_walk_validate,
-    description=_random_walk_description,
-    value_schema=_random_walk_value_schema,
-    dir_name=lambda args: (
-        f"random_walk_d{args.gibbs_k_vars}_x1var{args.rw_x1_var}_stepvar{args.rw_step_var}"
-    ),
-    parse_dir_name=_random_walk_parse,
-    bin_edges=_random_walk_bins,
-    reference=_random_walk_reference,
-    value_formatter=_round2,
-    samples_to_plot=_random_walk_increments,
-)
-
-
-# --- Multinomial allocation (joint, global dependence) ----------------------
-
-
-def _multinomial_args(parser: ArgumentParser) -> None:
-    parser.add_argument(
-        "--multi_n",
-        type=int,
-        default=100,
-        help="Number of trials N for the joint Multinomial target.",
-    )
-
-
-def _multinomial_validate(args: Namespace) -> None:
-    if args.multi_n < 1:
-        raise ValueError(f"--multi_n must be >= 1, got {args.multi_n}.")
-    if args.gibbs_k_vars < 2:
-        raise ValueError(f"multinomial needs --gibbs_k_vars >= 2, got {args.gibbs_k_vars}.")
-
-
-def _multinomial_description(args: Namespace) -> str:
-    d = args.gibbs_k_vars
-    n = args.multi_n
-    p_str = f"1/{d}"
-    return (
-        f"a Multinomial distribution on (X1, ..., X{d}) with {n} trials and "
-        f"equal category probabilities [{p_str}, ..., {p_str}] "
-        f"(so X1, ..., X{d} are non-negative integers that sum to {n})"
-    )
-
-
-def _multinomial_margin_hi(n_trials: int, n_vars: int, reach: float = PLOT_REACH) -> int:
-    p = 1.0 / n_vars
-    mean = n_trials * p
-    std = math.sqrt(n_trials * p * (1.0 - p))
-    return min(n_trials, int(math.ceil(mean + reach * std)))
-
-
-def _multinomial_pooled_values(
-    samples: Sequence[dict[str, Any]], params: dict[str, Any]
-) -> list[float]:
-    names = indexed_var_names(params["n_vars"])
-    values: list[float] = []
-    for sample in samples:
-        values.extend(float(sample[name]) for name in names)
-    return values
-
-
-def _multinomial_parse(dirname: str) -> dict[str, Any] | None:
-    m = re.fullmatch(r"multinomial_d(\d+)_n(\d+)", dirname)
-    if not m:
-        return None
-    return {"n_vars": int(m.group(1)), "n_trials": int(m.group(2))}
-
-
-def _multinomial_reference(params: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
-    n, d = params["n_trials"], params["n_vars"]
-    p = 1.0 / d
-    hi = _multinomial_margin_hi(n, d)
-    k = np.arange(0, hi + 1)
-    pmf = np.array([math.comb(n, int(i)) * p ** int(i) * (1 - p) ** (n - int(i)) for i in k])
-    return k.astype(float), pmf
-
-
-MULTINOMIAL = Target(
-    name="multinomial",
-    discrete=True,
-    is_joint=True,
-    add_arguments=_multinomial_args,
-    validate=_multinomial_validate,
-    description=_multinomial_description,
-    value_schema=lambda args: {"type": "integer", "minimum": 0, "maximum": args.multi_n},
-    dir_name=lambda args: f"multinomial_d{args.gibbs_k_vars}_n{args.multi_n}",
-    parse_dir_name=_multinomial_parse,
-    bin_edges=lambda params: _integer_bins(
-        0, _multinomial_margin_hi(params["n_trials"], params["n_vars"])
-    ),
-    reference=_multinomial_reference,
-    samples_to_plot=_multinomial_pooled_values,
-)
-
-
 TARGETS: dict[str, Target] = {
-    target.name: target
-    for target in (UNIFORM, GAUSSIAN, MIXTURE, BINOMIAL, POISSON, RANDOM_WALK, MULTINOMIAL)
+    target.name: target for target in (UNIFORM, GAUSSIAN, MIXTURE, BINOMIAL, POISSON)
 }
 
 

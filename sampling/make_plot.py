@@ -7,57 +7,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from sampling.targets import TARGETS, get_target
-from sampling.utils import indexed_var_names
+from sampling.utils import RESULTS_DIR
 
-RESULTS_DIR = Path(__file__).resolve().parent / "results"
 MAX_LAG = 128
 
-# --- Method naming and display order ----------------------------------------
-METHOD_DISPLAY_PATTERNS = [
-    (re.compile(r"^independent(?:_reasoning)?$"), "Independent"),
-    (re.compile(r"^batch(?:_reasoning)?(?:_nc\d+)?$"), "Batch"),
-    (
-        re.compile(r"^direct(?:_reasoning)?_k(?P<k>\d+)(?:_nc\d+)?$"),
-        "Direct (K={k})",
-    ),
-    (
-        re.compile(r"^direct_fixed(?:_reasoning)?_k(?P<k>\d+)(?:_nc\d+)?$"),
-        "Direct-fixed (K={k})",
-    ),
-    (
-        re.compile(r"^direct_continuation_k(?P<k>\d+)(?:_nc\d+)?$"),
-        "Direct-conti. (K={k})",
-    ),
-    (
-        re.compile(r"^direct_fixed_continuation_k(?P<k>\d+)(?:_nc\d+)?$"),
-        "Direct-fixed-conti. (K={k})",
-    ),
-    (
-        re.compile(r"^gibbs(?:_reasoning)?_k(?P<k>\d+)_b(?P<b>\d+)(?:_nc\d+)?$"),
-        "Gibbs (K={k}, B={b})",
-    ),
-    (
-        re.compile(r"^gibbs_continuation_k(?P<k>\d+)_b(?P<b>\d+)(?:_nc\d+)?$"),
-        "Gibbs-conti. (K={k}, B={b})",
-    ),
-    (
-        re.compile(r"^barkergibbs(?:_reasoning)?_k(?P<k>\d+)_b(?P<b>\d+)(?:_nc\d+)?$"),
-        "Barker-Gibbs (K={k}, B={b})",
-    ),
-    (
-        re.compile(r"^gamblinggibbs(?:_reasoning)?_k(?P<k>\d+)_b(?P<b>\d+)(?:_nc\d+)?$"),
-        "Gambling-Gibbs (K={k}, B={b})",
-    ),
-]
 
-
-def get_method_display(method):
+def get_method_display(method, patterns):
     """Return ((primary_order, k, b), display_label) for a method.
 
-    Methods not matching any known pattern sort to the end alphabetically and
-    fall back to their raw name as the label.
+    Methods not matching any pattern in ``patterns`` sort to the end
+    alphabetically and fall back to their raw name as the label.
     """
-    for order, (pattern, label_template) in enumerate(METHOD_DISPLAY_PATTERNS):
+    for order, (pattern, label_template) in enumerate(patterns):
         m = pattern.fullmatch(method)
         if m:
             groups = m.groupdict()
@@ -65,7 +26,7 @@ def get_method_display(method):
             k = int(groups["k"]) if groups.get("k") else 0
             b = int(groups["b"]) if groups.get("b") else 0
             return (order, k, b), label
-    return (len(METHOD_DISPLAY_PATTERNS), 0, 0), method
+    return (len(patterns), 0, 0), method
 
 
 # --- Result parsing ---------------------------------------------------------
@@ -201,9 +162,9 @@ def write_metrics_summary(out_path, all_rows):
 
 
 # --- Plotting ---------------------------------------------------------------
-def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
-    methods = sorted(method_data.keys(), key=lambda m: (get_method_display(m)[0], m))
-    method_labels = {m: get_method_display(m)[1] for m in methods}
+def plot_exp_dir(target_name, exp_dir, params, method_data, patterns, plot_suffix=""):
+    methods = sorted(method_data.keys(), key=lambda m: (get_method_display(m, patterns)[0], m))
+    method_labels = {m: get_method_display(m, patterns)[1] for m in methods}
 
     if not methods:
         return
@@ -238,7 +199,7 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
         plotted_seeds = []
         max_abs_acfs = []
         for seed in seeds:
-            acf_max = max_abs_acf(target.mixing_values(method_data[method][seed], params), MAX_LAG)
+            acf_max = max_abs_acf([float(value) for value in method_data[method][seed]], MAX_LAG)
             if acf_max is None:
                 continue
             max_abs_acfs.append(acf_max)
@@ -298,7 +259,7 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
         n_values = 0
         n_in_range = 0
         for seed in seeds:
-            data = target.histogram_values(method_data[method][seed], params)
+            data = [float(value) for value in method_data[method][seed]]
             values = np.asarray(data, dtype=float)
             counts, _ = np.histogram(values, bins=bin_edges)
             mass = counts / len(values) if len(values) else counts.astype(float)
@@ -368,32 +329,6 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
             backgroundcolor="lightgray",
         )
 
-        if target.name == "multinomial":
-
-            def _multinomial_sum_caption(samples, params):
-                if not samples or not isinstance(samples[0], dict):
-                    return None
-                names = indexed_var_names(params["n_vars"])
-                n_trials = params["n_trials"]
-                totals = [sum(float(sample[name]) for name in names) for sample in samples]
-                frac = float(np.mean(np.isclose(totals, n_trials)))
-                return f"P(sum={n_trials})={frac:.3f}, mean sum={np.mean(totals):.2f}"
-
-            raw = [sample for seed in seeds for sample in method_data[method][seed]]
-            diag = _multinomial_sum_caption(raw, params)
-            if diag:
-                print(f"{label}: {diag}")
-                ax.text(
-                    0.50,
-                    0.02,
-                    diag,
-                    transform=ax.transAxes,
-                    ha="center",
-                    va="bottom",
-                    fontsize=11,
-                    color="black",
-                )
-
         ax.grid(axis="y", linestyle="--", alpha=0.7)
 
     plt.tight_layout()
@@ -411,11 +346,17 @@ def plot_exp_dir(target_name, exp_dir, params, method_data, plot_suffix=""):
     return metrics_rows
 
 
-def plot_result_dir(target_name, data_dir, params, ignore_unknown_methods=False):
-    """Plot every model in one parameter dir; return metrics rows.
+def sweep_suffix(method):
+    """Which sweep a method name belongs to."""
+    if "_reasoning" in method:
+        return "_reasoning"
+    return ""
 
-    Keyed by (plot_suffix, param dir, model dir) to keep the reasoning and
-    non-reasoning sweeps in separate summaries.
+
+def plot_result_dir(target_name, data_dir, params, patterns, plot_suffixes, ignore_unknown):
+    """Plot every model in one parameter dir of one results tree.
+
+    Returns metrics rows keyed by (plot_suffix, param dir, model dir).
     """
     collected = {}
     for model_dir in sorted(data_dir.iterdir()):
@@ -423,56 +364,50 @@ def plot_result_dir(target_name, data_dir, params, ignore_unknown_methods=False)
             continue
 
         method_data = {}
-        for filepath in model_dir.glob("*.json"):
+        for filepath in sorted(model_dir.glob("*.json")):
             method, seed = parse_filename(filepath)
             if method == "Unknown" or seed is None:
                 continue
-            if ignore_unknown_methods and not any(
-                pattern.fullmatch(method) for pattern, _ in METHOD_DISPLAY_PATTERNS
-            ):
+            if ignore_unknown and not any(p.fullmatch(method) for p, _ in patterns):
                 print(f"Skipping run with unrecognized method {method} from {filepath}.")
                 continue
 
             with open(filepath, "r") as f:
                 data = json.load(f)
 
-            if method not in method_data:
-                method_data[method] = {}
-            if seed not in method_data[method]:
-                method_data[method][seed] = []
-            method_data[method][seed].extend(data)
+            method_data.setdefault(method, {}).setdefault(seed, []).extend(data)
 
-        reasoning_data = {
-            method: seeds for method, seeds in method_data.items() if "_reasoning" in method
-        }
-        sampling_data = {
-            method: seeds for method, seeds in method_data.items() if "_reasoning" not in method
-        }
-
-        if sampling_data:
-            rows = plot_exp_dir(target_name, model_dir, params, sampling_data)
-            if rows:
-                collected[("", data_dir.name, model_dir.name)] = rows
-        if reasoning_data:
+        for suffix in plot_suffixes:
+            sweep_data = {
+                method: seeds
+                for method, seeds in method_data.items()
+                if sweep_suffix(method) == suffix
+            }
+            if not sweep_data:
+                continue
             rows = plot_exp_dir(
-                target_name, model_dir, params, reasoning_data, plot_suffix="_reasoning"
+                target_name, model_dir, params, sweep_data, patterns, plot_suffix=suffix
             )
             if rows:
-                collected[("_reasoning", data_dir.name, model_dir.name)] = rows
+                collected[(suffix, data_dir.name, model_dir.name)] = rows
 
     return collected
 
 
-def main(args):
-    base_dir = RESULTS_DIR
-    if not base_dir.is_dir():
-        print(f"No results directory found at {base_dir}.")
+def run(
+    results_dir: Path,
+    patterns: list[tuple[re.Pattern, str]],
+    plot_suffixes: list[str],
+    ignore_unknown: bool = False,
+):
+    if not results_dir.is_dir():
+        print(f"No results directory found at {results_dir}.")
         return
 
     # {plot_suffix: {(target, param dir, model dir): metrics rows}}
-    summaries = {"": {}, "_reasoning": {}}
+    summaries = {suffix: {} for suffix in plot_suffixes}
 
-    for target_dir in sorted(base_dir.iterdir()):
+    for target_dir in sorted(results_dir.iterdir()):
         if not target_dir.is_dir():
             continue
 
@@ -488,10 +423,7 @@ def main(args):
 
             found = True
             collected = plot_result_dir(
-                target_dir.name,
-                data_dir,
-                params,
-                ignore_unknown_methods=args.ignore_unknown_methods,
+                target_dir.name, data_dir, params, patterns, plot_suffixes, ignore_unknown
             )
             for (suffix, param_dir, model), rows in collected.items():
                 summaries[suffix][(target_dir.name, param_dir, model)] = rows
@@ -502,7 +434,7 @@ def main(args):
     for suffix, all_rows in summaries.items():
         if not all_rows:
             continue
-        out_path = base_dir / f"metrics_summary{suffix}.txt"
+        out_path = results_dir / f"metrics_summary{suffix}.txt"
         write_metrics_summary(out_path, all_rows)
         print(f"Saved metrics summary to {out_path}")
 
@@ -510,9 +442,38 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--ignore-unknown-methods",
+        "--ignore-unknown",
         action="store_true",
-        help="Ignore runs whose method name does not match METHOD_DISPLAY_PATTERNS.",
+        help="Ignore runs whose method name does not match METHOD_PATTERNS.",
     )
     args = parser.parse_args()
-    main(args)
+
+    PATTERNS = [
+        (re.compile(r"^independent$"), "Independent"),
+        (re.compile(r"^batch(?:_nc\d+)?$"), "Batch"),
+        (
+            re.compile(r"^direct_k(?P<k>\d+)(?:_nc\d+)?$"),
+            "Direct",
+        ),
+        (
+            re.compile(r"^gibbs_k(?P<k>\d+)_b(?P<b>\d+)(?:_nc\d+)?$"),
+            "Gibbs (B={b})",
+        ),
+        (
+            re.compile(r"^barkergibbs(?:_reasoning)?_k(?P<k>\d+)_b(?P<b>\d+)(?:_nc\d+)?$"),
+            "Barker-Gibbs (B={b})",
+        ),
+        (
+            re.compile(r"^gamblinggibbs(?:_reasoning)?_k(?P<k>\d+)_b(?P<b>\d+)(?:_nc\d+)?$"),
+            "Gambling-Gibbs (B={b})",
+        ),
+    ]
+
+    PLOT_SUFFIXES = ("", "_reasoning")
+
+    run(
+        results_dir=RESULTS_DIR,
+        patterns=PATTERNS,
+        plot_suffixes=PLOT_SUFFIXES,
+        ignore_unknown=args.ignore_unknown,
+    )

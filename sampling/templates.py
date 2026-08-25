@@ -1,10 +1,3 @@
-"""Prompt templates for scalar (univariate iid) targets.
-
-The wording is shared across every distribution; only the description of the
-target and how values are rendered differ, and those come from the ``Target``
-registry in ``sampling.targets``. JSON schemas are built by ``Target.object_schema``.
-"""
-
 import json
 from argparse import Namespace
 from typing import Any, Callable
@@ -12,13 +5,10 @@ from typing import Any, Callable
 from sampling.targets import Target, get_target
 
 
-def create_template(method: str, args: Namespace) -> Callable[..., str]:
+def create_template(args: Namespace, method: str) -> Callable[..., str]:
     target: Target = get_target(args.target)
-    if target.is_joint:
-        raise ValueError(f"Scalar templates require a univariate target, got {target.name!r}.")
-
     model_type = args.model_type
-    dist_str = target.describe(args)
+    dist_str = target.description(args)
 
     # Independent Sampling
     if method == "indep":
@@ -180,35 +170,3 @@ def create_template(method: str, args: Namespace) -> Callable[..., str]:
         return template
 
     raise ValueError(f"Invalid method: {method}")
-
-
-def create_continuation_template(args: Namespace) -> Callable[..., str | tuple[str, str]]:
-    """Field-by-field JSON-array continuation for direct_continuation and gibbs_continuation."""
-    target: Target = get_target(args.target)
-    if target.is_joint:
-        raise ValueError(f"Scalar continuation requires a univariate target, got {target.name!r}.")
-
-    dist_str = target.describe(args)
-    num_vars = args.gibbs_k_vars
-    fmt = target.value_formatter
-
-    def prefill(observed: dict[str, Any] | None) -> str:
-        if observed is None:
-            return "["
-        return "[" + ", ".join(json.dumps(fmt(v)) for v in observed.values()) + ","
-
-    if args.model_type == "base":
-
-        def template(
-            observed: dict[str, Any] | None = None, next_key: str | None = None
-        ) -> str | tuple[str, str]:
-            return f"Here are {num_vars} iid samples from {dist_str}:\n" + prefill(observed)
-
-    else:
-
-        def template(
-            observed: dict[str, Any] | None = None, next_key: str | None = None
-        ) -> str | tuple[str, str]:
-            return f"Draw {num_vars} iid samples from {dist_str}.", prefill(observed)
-
-    return template

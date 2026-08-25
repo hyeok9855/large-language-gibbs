@@ -1,0 +1,65 @@
+{#- Olmo-3-32B-Think's stock chat template, with ONE change: the generation
+    prompt is `<|im_start|>assistant\n` instead of `<|im_start|>assistant\n<think>`.
+
+    WHY, measured rather than assumed (A/B, 200 probe draws per arm, jobs
+    3631620 / 3631621, identical 4096-token budget):
+
+                          stock      this override
+      admissible JSON     152/200    200/200
+      truncated at cap     48/200      0/200      z = 7.4
+      content preference    68%        38%        z = 5.5
+
+    The model is NOT trapped by the grammar - three quarters of stock-template
+    draws are perfectly well-formed JSON. What the injected <think> does is make
+    it reason much longer, so 24% of calls exceed the budget. Those calls raise
+    and priorbot retries them, which silently selects for whichever answers
+    happen to be short: on two options that are *equally likely* under N(0, 1),
+    the stock arm preferred one 68% of the time against 38% here. That is a
+    distorted acceptance kernel, not just wasted tokens - and it costs ~3.5x the
+    wall-clock besides.
+
+    So this is a throughput-and-bias measure, not a correctness rescue.
+    (results_legacy/2026-08-20_olmo3_think_prefill/NOTE.md attributes that run's
+    failure to a <think> block the grammar could never close. That mechanism did
+    not reproduce; at its 1k budget the same verbosity would truncate far more
+    often, which fits its "18-932 retries" without any trapping.)
+
+    Native thinking is a different protocol and lives in sampling_reasoning/. -#}
+{%- set has_system = messages | selectattr("role", "equalto", "system") | list | length > 0 -%}
+{%- if not has_system -%}
+	{{- "<|im_start|>system\nYou are a helpful AI assistant.<|im_end|>\n" -}}
+{%- endif -%}
+{%- for message in messages -%}
+	{%- if message["role"] == "system" -%}
+		{{- "<|im_start|>system\n" + message["content"] -}}
+		{%- if message.get("functions", none) is not none -%}
+			{{- " <functions>" + message["functions"] + "</functions><|im_end|>\n" -}}
+		{%- else -%}
+			{{- " You do not currently have access to any functions. <functions></functions><|im_end|>\n" -}}
+		{%- endif -%}
+	{%- elif message["role"] == "user" -%}
+		{%- if message.get("functions", none) is not none -%}
+			{{- "<|im_start|>user\n" + message["content"] + "\n" + "<functions>" + message["functions"] + "</functions><|im_end|>\n" -}}
+		{%- else -%}
+			{{- "<|im_start|>user\n" + message["content"] + "<|im_end|>\n" -}}
+		{%- endif -%}
+	{%- elif message["role"] == "assistant" -%}
+		{{- "<|im_start|>assistant\n" -}}
+		{%- if message.get("content", none) is not none -%}
+			{{- message["content"] -}}
+		{%- endif -%}
+		{%- if message.get("function_calls", none) is not none -%}
+			{{- "<function_calls>" + message["function_calls"] + "</function_calls>" -}}
+		{%- endif -%}
+		{%- if not loop.last -%}
+			{{- "<|im_end|>" + "\n" -}}
+		{%- else -%}
+			{{- eos_token -}}
+		{%- endif -%}
+	{%- elif message["role"] == "environment" -%}
+		{{- "<|im_start|>environment\n" + message["content"] + "<|im_end|>\n" -}}
+	{%- endif -%}
+	{%- if loop.last and add_generation_prompt -%}
+		{{- "<|im_start|>assistant\n" -}}
+	{%- endif -%}
+{%- endfor -%}
