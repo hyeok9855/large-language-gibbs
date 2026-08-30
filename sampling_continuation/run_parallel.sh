@@ -1,15 +1,16 @@
 #! /bin/bash
 
-# JSON-family sweep over the simple-distribution targets.
-# The continuation family has its own sweep: sampling_continuation/run_parallel.sh.
+# Continuation-family sweep over the simple-distribution targets.
+# The JSON family has its own sweep: sampling/run_parallel.sh. Both write
+# identical filenames, so never point them at the same results tree.
 #
 # Usage:
-#   bash sampling/run_parallel.sh <model_name> <port> [n_seeds=25] [reasoning=false] [temperature=1.0]
+#   bash sampling_continuation/run_parallel.sh <model_name> <port> [n_seeds=25] [reasoning=false] [temperature=1.0]
 #
-# model_name must be listed in MODEL_NAME_TO_TYPE (common/utils.py); the
-# project venv must be active. Each config runs as one parallel wave of
+# model_name must be listed in MODEL_NAME_TO_TYPE (common/utils.py);
+# the project venv must be active. Each config runs as one parallel wave of
 # ~7 jobs x n_seeds; existing result files are skipped by run.py.
-# Visualise afterwards with: uv run python sampling/make_plot.py
+# Visualise afterwards with: uv run python sampling_continuation/make_plot.py
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -20,7 +21,7 @@ REASONING=${4:-false}
 TEMP=${5:-1.0}
 
 if [ -z "$MODEL" ] || [ -z "$PORT" ]; then
-    echo "Usage: bash sampling/run_parallel.sh <model_name> <port> [n_seeds=25] [reasoning=false] [temperature=1.0]"
+    echo "Usage: bash sampling_continuation/run_parallel.sh <model_name> <port> [n_seeds=25] [reasoning=false] [temperature=1.0]"
     exit 1
 fi
 
@@ -47,6 +48,15 @@ else
     REASONING_FLAG=""
 fi
 
+# Reasoning traces for seed 0 only; see sampling/reasoning_traces.py.
+trace_flag() {  # trace_flag <seed>
+    if [ "$REASONING" = true ] && [ "$1" -eq 0 ]; then
+        echo "--n_traces 10"
+    else
+        echo "--n_traces 0"
+    fi
+}
+
 echo "Model: $MODEL ($MODEL_TYPE), port: $PORT, seeds: $NSEEDS, reasoning: $REASONING, temperature: $TEMP"
 
 PIDS=()
@@ -69,7 +79,7 @@ launch_field() {
 run_config() {
     local COMMON_ARGS="--model_name $MODEL --port $PORT --temperature $TEMP $REASONING_FLAG $*"
     for SEED in $(seq 0 $(($NSEEDS - 1))); do
-        SEED_ARGS="--seed $SEED"
+        SEED_ARGS="--seed $SEED $(trace_flag $SEED)"
 
         launch_field $COMMON_ARGS $SEED_ARGS --methods indep
         launch_field $COMMON_ARGS $SEED_ARGS --methods batch

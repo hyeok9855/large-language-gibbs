@@ -3,16 +3,16 @@ import json
 import os
 import random
 from argparse import Namespace
-from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
 from priorbot.llm import OpenAICompatLLM
 from priorbot.priors import BarkerGibbsLLMPrior, GamblingGibbsLLMPrior, GibbsLLMPrior, LLMPrior
 
+from common.utils import MODEL_NAME_TO_TYPE
 from sampling.targets import TARGETS, get_target
 from sampling.templates import create_template
-from sampling.utils import MODEL_NAME_TO_TYPE, RESULTS_DIR, indexed_var_names
+from sampling.utils import RESULTS_DIR, indexed_var_names
 
 # The decision kernels are the only methods with a manual-reasoning variant.
 REASONING_METHODS = ("barker_gibbs", "gambling_gibbs")
@@ -79,8 +79,8 @@ def get_args(description: str | None = None) -> Namespace:
     parser.add_argument(
         "--methods",
         nargs="+",
-        choices=["indep", "batch", "direct", "gibbs", "barker_gibbs", "gambling_gibbs"],
-        default=["indep", "batch", "direct", "gibbs", "barker_gibbs", "gambling_gibbs"],
+        choices=["indep", "batch", "gibbs", "barker_gibbs", "gambling_gibbs"],
+        default=["indep", "batch", "gibbs", "barker_gibbs", "gambling_gibbs"],
     )
     parser.add_argument("--verbose", action="store_true")
 
@@ -129,15 +129,7 @@ def get_args(description: str | None = None) -> Namespace:
 
 
 def output_filename(args: Namespace, method: str) -> str:
-    """Result filename for ``method`` in either family.
-
-    Both name tables live here so the two families stay provably parallel: a
-    continuation filename is its JSON counterpart with ``_continuation`` spliced
-    in after the method name. Only the decision kernels take the reasoning tag
-    (see ``REASONING_METHODS``), and only the JSON field methods take the bounds
-    tag - barker/gambling render just a choice schema and continuation prompts
-    render no schema at all, so neither has bounds to hide.
-    """
+    """Result filename for ``method``."""
     reasoning_tag = "_reasoning" if args.manual_reasoning else ""
     gibbs_suffix = (
         f"_k{args.gibbs_k_vars}_b{args.gibbs_block_size}_nc{args.n_chains}_seed{args.seed}.json"
@@ -145,7 +137,6 @@ def output_filename(args: Namespace, method: str) -> str:
     names = {
         "indep": f"independent_seed{args.seed}.json",
         "batch": f"batch_nc{args.n_chains}_seed{args.seed}.json",
-        "direct": f"direct_k{args.gibbs_k_vars}_nc{args.n_chains}_seed{args.seed}.json",
         "gibbs": f"gibbs{gibbs_suffix}",
         "barker_gibbs": f"barkergibbs{reasoning_tag}{gibbs_suffix}",
         "gambling_gibbs": f"gamblinggibbs{reasoning_tag}{gibbs_suffix}",
@@ -176,19 +167,21 @@ def skip_method(method: str, target, args: Namespace, out_path: Path) -> bool:
     return False
 
 
-def save_kvar_samples(path: Path, chain_results, args: Namespace, k: int | None = None) -> None:
-    """Flatten per-chain k-variable objects into the flat sample list and save."""
-    var_names = indexed_var_names(k if k is not None else args.gibbs_k_vars)
+def save_samples(path: Path, samples: list, n_samples: int) -> None:
+    samples = samples[:n_samples]
+    assert len(samples) == n_samples
+    with open(path, "w") as f:
+        json.dump(samples, f)
+    print(f"Saved {len(samples)} samples to {path}")
 
+
+def save_kvar_samples(path: Path, chain_results, k: int, n_samples: int) -> None:
+    var_names = indexed_var_names(k)
     samples = []
     for s_chain in chain_results:
         for sample in s_chain:
             samples += [sample[key] for key in var_names]
-    samples = samples[: args.n_samples]
-    assert len(samples) == args.n_samples
-    with open(path, "w") as f:
-        json.dump(samples, f)
-    print(f"Saved {len(samples)} samples to {path}")
+    save_samples(path, samples, n_samples)
 
 
 def main():
@@ -196,6 +189,7 @@ def main():
 
     target = get_target(args.target)
     kvar_n_samples = args.n_samples // args.gibbs_k_vars
+    assert kvar_n_samples % args.n_chains == 0
 
     out_dir = (
         RESULTS_DIR
@@ -232,10 +226,11 @@ def main():
             verbose=args.verbose,
             pbar=True,
         )
-        indep_samples = [s["sample"] for s_chain in indep_samples for s in s_chain]
-        with open(indep_out_path, "w") as f:
-            json.dump(indep_samples, f)
-        print(f"Saved {len(indep_samples)} samples to {indep_out_path}")
+        save_samples(
+            indep_out_path,
+            [s["sample"] for s_chain in indep_samples for s in s_chain],
+            args.n_samples,
+        )
 
     # 2. Batch Sampling
     batch_out_path = out_dir / output_filename(args, "batch")
@@ -253,45 +248,13 @@ def main():
             1, [batch_schema] * args.n_chains, verbose=args.verbose, pbar=True
         )
 
-        batch_samples_flat = []
-        for s_chain in batch_results:
-            batch_samples_flat += s_chain[0]["samples"]
-        batch_samples_flat = batch_samples_flat[: args.n_samples]
-        assert len(batch_samples_flat) == args.n_samples
-
-        with open(batch_out_path, "w") as f:
-            json.dump(batch_samples_flat, f)
-        print(f"Saved {len(batch_samples_flat)} samples to {batch_out_path}")
-
-    # --- Direct sampling (single pass over the k variables) ---
-
-    def run_one_pass(out_path):
-        assert kvar_n_samples % args.n_chains == 0
-        llm = OpenAICompatLLM(
-            **llm_common_kwargs,
-            temperature=args.temperature,
-            max_tokens=args.gibbs_k_vars * 32,
+        save_samples(
+            batch_out_path,
+            [v for s_chain in batch_results for v in s_chain[0]["samples"]],
+            args.n_samples,
         )
-        template = create_template(args, "direct")
-        schema = target.object_schema(args, "direct")
-        # Coordinate order is shuffled per draw, so no X-key is pinned to a
-        # fixed position in the object the model completes.
-        prior = LLMPrior(llm=llm, template=template, shuffle_variables=True)
-        samples = prior.sample_parallel(
-            kvar_n_samples // args.n_chains,
-            [deepcopy(schema) for _ in range(args.n_chains)],
-            verbose=args.verbose,
-            pbar=True,
-        )
-        save_kvar_samples(out_path, samples, args)
 
-    # 3. Direct Sampling (single pass, shuffled coordinate order)
-    direct_out_path = out_dir / output_filename(args, "direct")
-    if not skip_method("direct", target, args, direct_out_path):
-        print("\n--- Running Direct Sampling ---")
-        run_one_pass(direct_out_path)
-
-    # 4. Gibbs Sampling
+    # 3. Gibbs Sampling
     gibbs_out_path = out_dir / output_filename(args, "gibbs")
     if not skip_method("gibbs", target, args, gibbs_out_path):
         print("\n--- Running Gibbs Sampling ---")
@@ -310,16 +273,15 @@ def main():
             block_size=args.gibbs_block_size,
             sweep=args.sweep,
         )
-        assert kvar_n_samples % args.n_chains == 0
         gibbs_samples = gibbs_prior.sample_parallel(
             kvar_n_samples // args.n_chains,
             [gibbs_schema] * args.n_chains,
             verbose=args.verbose,
             pbar=True,
         )
-        save_kvar_samples(gibbs_out_path, gibbs_samples, args)
+        save_kvar_samples(gibbs_out_path, gibbs_samples, args.gibbs_k_vars, args.n_samples)
 
-    # 5. Barker-Gibbs Sampling
+    # 4. Barker-Gibbs Sampling
     barker_out_path = out_dir / output_filename(args, "barker_gibbs")
     if not skip_method("barker_gibbs", target, args, barker_out_path):
         print("\n--- Running Barker-Gibbs Sampling ---")
@@ -342,16 +304,15 @@ def main():
         barker_gibbs_prior.reasoning_prompt = barker_gibbs_prior.reasoning_prompt.replace(
             "step-by-step", "brief"
         )
-        assert kvar_n_samples % args.n_chains == 0
         barker_samples = barker_gibbs_prior.sample_parallel(
             kvar_n_samples // args.n_chains,
             [gibbs_schema] * args.n_chains,
             verbose=args.verbose,
             pbar=True,
         )
-        save_kvar_samples(barker_out_path, barker_samples, args)
+        save_kvar_samples(barker_out_path, barker_samples, args.gibbs_k_vars, args.n_samples)
 
-    # 6. Gambling-Gibbs Sampling
+    # 5. Gambling-Gibbs Sampling
     gambling_out_path = out_dir / output_filename(args, "gambling_gibbs")
     if not skip_method("gambling_gibbs", target, args, gambling_out_path):
         print("\n--- Running Gambling-Gibbs Sampling ---")
@@ -374,14 +335,13 @@ def main():
         gambling_gibbs_prior.reasoning_prompt = gambling_gibbs_prior.reasoning_prompt.replace(
             "step-by-step", "brief"
         )
-        assert kvar_n_samples % args.n_chains == 0
         gambling_samples = gambling_gibbs_prior.sample_parallel(
             kvar_n_samples // args.n_chains,
             [gibbs_schema] * args.n_chains,
             verbose=args.verbose,
             pbar=True,
         )
-        save_kvar_samples(gambling_out_path, gambling_samples, args)
+        save_kvar_samples(gambling_out_path, gambling_samples, args.gibbs_k_vars, args.n_samples)
 
 
 if __name__ == "__main__":

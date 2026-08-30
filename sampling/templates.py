@@ -5,6 +5,13 @@ from typing import Any, Callable
 from sampling.targets import Target, get_target
 
 
+def round_dict(d: dict[str, Any], precision: int = 6) -> dict[str, Any]:
+    return {
+        key: round(value, precision) if isinstance(value, float) else value
+        for key, value in d.items()
+    }
+
+
 def create_template(args: Namespace, method: str) -> Callable[..., str]:
     target: Target = get_target(args.target)
     model_type = args.model_type
@@ -51,8 +58,8 @@ def create_template(args: Namespace, method: str) -> Callable[..., str]:
 
     k_vars = args.gibbs_k_vars
 
-    # Gibbs and direct sampling share the same joint-variable template
-    if method in ("gibbs", "direct"):
+    # Gibbs sampling
+    if method == "gibbs":
         if model_type == "base":
 
             def template(schema: dict[str, Any], observed: dict[str, Any] | None = None) -> str:
@@ -62,7 +69,7 @@ def create_template(args: Namespace, method: str) -> Callable[..., str]:
                 n_missing = len([key for key in schema["required"] if key != "reasoning"])
                 _template = (
                     f"Here are {len(observed)} iid samples from {dist_str}:\n"
-                    f"{json.dumps(target.format_observed(observed))}\n"
+                    f"{json.dumps(round_dict(observed))}\n"
                 )
                 if n_missing > 1:
                     _template += (
@@ -88,8 +95,8 @@ def create_template(args: Namespace, method: str) -> Callable[..., str]:
                 n_missing = len([key for key in schema["required"] if key != "reasoning"])
                 _template = (
                     f"You are generating {k_vars} iid samples from {dist_str}. "
-                    f"You have already observed {len(observed)} iid samples: "
-                    f"{json.dumps(target.format_observed(observed))}\n"
+                    f"You have already drawn {len(observed)} iid samples:\n"
+                    f"{json.dumps(round_dict(observed))}\n"
                 )
                 if n_missing > 1:
                     _template += (
@@ -121,14 +128,15 @@ def create_template(args: Namespace, method: str) -> Callable[..., str]:
             _template = f"You are generating {k_vars} iid samples from {dist_str}. "
             if observed:
                 _template += (
-                    f"You have already observed {len(observed)} iid samples: "
-                    f"{json.dumps(target.format_observed(observed))}\n"
+                    f"You have already drawn {len(observed)} iid samples:\n"
+                    f"{json.dumps(round_dict(observed, 2))}\n"
                 )
-            option1_str = json.dumps(target.format_observed(option1))
-            option2_str = json.dumps(target.format_observed(option2))
+            option1_str = json.dumps(round_dict(option1, 2))
+            option2_str = json.dumps(round_dict(option2, 2))
+            noun = "sample" if len(option1) == 1 else "samples"
             _template += (
-                "Which of the following two candidates is more likely to be the remaining iid "
-                "samples from the distribution?\n"
+                "Which of the following two candidates is more likely to be the next iid "
+                f"{noun} from the distribution?\n"
                 f"Option 1: {option1_str}\n"
                 f"Option 2: {option2_str}\n"
                 f"Respond with JSON that follows this schema: {json.dumps(output_schema)}"
@@ -150,13 +158,14 @@ def create_template(args: Namespace, method: str) -> Callable[..., str]:
             _template = f"You are generating {k_vars} iid samples from {dist_str}. "
             if observed:
                 _template += (
-                    f"You have already observed {len(observed)} iid samples: "
-                    f"{json.dumps(target.format_observed(observed))}\n"
+                    f"You have already drawn {len(observed)} iid samples:\n"
+                    f"{json.dumps(round_dict(observed, 2))}\n"
                 )
-            option1_str = json.dumps(target.format_observed(option1))
-            option2_str = json.dumps(target.format_observed(option2))
+            option1_str = json.dumps(round_dict(option1, 2))
+            option2_str = json.dumps(round_dict(option2, 2))
+            noun = "sample" if len(option1) == 1 else "samples"
             _template += (
-                "Consider two candidates for the remaining iid samples:\n"
+                f"Consider two candidates for the next iid {noun}:\n"
                 f"Option 1: {option1_str}\n"
                 f"Option 2: {option2_str}\n"
                 "One of these is more plausible under the distribution than the other. "

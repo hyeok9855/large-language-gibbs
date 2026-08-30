@@ -15,25 +15,12 @@ from sampling.utils import indexed_var_names
 
 NUMBER = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
 NUMBER_LIST = rf"(?:{NUMBER})(?:,(?:{NUMBER}))*"
-KVAR_METHODS = ("direct", "gibbs", "barker_gibbs", "gambling_gibbs")
+KVAR_METHODS = ("gibbs", "barker_gibbs", "gambling_gibbs")
 
 # Truncation windows for unbounded targets, in sigmas.
 SCHEMA_REACH = 4.0  # what the model may emit
 PLOT_REACH = 4.0  # what the figures show, and off-plot draws go to overflow bin.
 assert SCHEMA_REACH >= PLOT_REACH
-UNIFORM_N_BINS = 50
-
-
-def _round2(value: Any) -> Any:
-    return round(value, 2) if isinstance(value, float) else value
-
-
-def _floats(text: str) -> list[float]:
-    return [float(part) for part in text.split(",")]
-
-
-def _join(values) -> str:
-    return ",".join(str(v) for v in values)
 
 
 @dataclass(frozen=True)
@@ -49,10 +36,6 @@ class Target:
     bin_edges: Callable[[dict[str, Any]], np.ndarray]
     reference: Callable[[dict[str, Any]], tuple[np.ndarray, np.ndarray]]
     validate: Callable[[Namespace], None]
-    value_formatter: Callable[[Any], Any] = lambda v: v
-
-    def format_observed(self, observed: dict[str, Any]) -> dict[str, Any]:
-        return {key: self.value_formatter(value) for key, value in observed.items()}
 
     def xlim(self, params: dict[str, Any]) -> tuple[float, float]:
         edges = self.bin_edges(params)
@@ -85,6 +68,8 @@ class Target:
 
 
 # --- Uniform (discrete) -----------------------------------------------------
+
+UNIFORM_N_BINS = 50
 
 
 def _uniform_args(parser: ArgumentParser) -> None:
@@ -193,7 +178,6 @@ GAUSSIAN = Target(
     ),
     bin_edges=_gaussian_bins,
     reference=_gaussian_reference,
-    value_formatter=_round2,
 )
 
 
@@ -265,11 +249,19 @@ def _mixture_parse(dirname: str) -> dict[str, Any] | None:
     )
     if not m:
         return None
+
+    def _floats(text: str) -> list[float]:
+        return [float(part) for part in text.split(",")]
+
     return {
         "means": _floats(m.group(1)),
         "stds": _floats(m.group(2)),
         "weights": _floats(m.group(3)),
     }
+
+
+def _join(values) -> str:
+    return ",".join(str(v) for v in values)
 
 
 MIXTURE = Target(
@@ -286,7 +278,6 @@ MIXTURE = Target(
     parse_dir_name=_mixture_parse,
     bin_edges=_mixture_bins,
     reference=_mixture_reference,
-    value_formatter=_round2,
 )
 
 

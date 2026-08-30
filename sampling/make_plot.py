@@ -452,10 +452,6 @@ if __name__ == "__main__":
         (re.compile(r"^independent$"), "Independent"),
         (re.compile(r"^batch(?:_nc\d+)?$"), "Batch"),
         (
-            re.compile(r"^direct_k(?P<k>\d+)(?:_nc\d+)?$"),
-            "Direct",
-        ),
-        (
             re.compile(r"^gibbs_k(?P<k>\d+)_b(?P<b>\d+)(?:_nc\d+)?$"),
             "Gibbs (B={b})",
         ),

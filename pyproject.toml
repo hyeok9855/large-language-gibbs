@@ -41,10 +41,11 @@ structure-learning-cuda13 = [
 
 divergent-association-task = [
     "scipy>=1.14",
+    "nltk>=3.8",  # WordNet noun lemmas for the uniform-random baseline
 ]
 
 [tool.uv.sources]
-priorbot = { git = "https://github.com/henrygouk/priorbot.git", rev = "70326554048978227dcf330ee080282a862bd109" }
+priorbot = { git = "https://github.com/henrygouk/priorbot.git", rev = "d7c1ba31745fc0ed69a63a7a5b9f6b86becee4da" }
 pgmpy = { git = "https://github.com/pgmpy/pgmpy.git", rev = "4c2cdb9c6a28e322c489c7e1eeff704536256a8a" }
 
 [build-system]
@@ -52,7 +53,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["sampling", "structure_learning", "consistent_reasoning", "divergent_association_task"]
+packages = ["common", "sampling", "sampling_continuation", "structure_learning", "consistent_reasoning", "divergent_association_task"]
 
 [tool.ruff]
 line-length = 100
