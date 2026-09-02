@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 import json
 import random
@@ -77,10 +75,12 @@ def run_npass_search(
             cid = example["consistency_id"]
             if args.instruction_tuned:
                 prompt = example["prompt"]
-                chosen = llm.generate(prompt, schema=label_choices, verbose=False, history=history)
+                chosen = llm.generate(
+                    prompt, schema=label_choices, verbose=verbose, history=history
+                )
             else:
                 prompt = cast(str, get_judge_prompt_fewshot(example, history, pipeline=False))
-                chosen = llm.generate(prompt, schema=label_choices, verbose=False)
+                chosen = llm.generate(prompt, schema=label_choices, verbose=verbose)
             if not isinstance(chosen, str):
                 raise TypeError(
                     f"Expected a string from choice-constrained generation; got {type(chosen)}"

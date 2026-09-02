@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Launch DAG-GFlowNet training jobs across multiple GPUs."""
 
-from __future__ import annotations
-
 import argparse
 import json
+import math
 import os
 import signal
 import subprocess
@@ -14,8 +13,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
+from common.utils import MODEL_NAME_TO_TYPE
 from structure_learning.utils.llm_data_utils import get_llm_data_run_name
-from structure_learning.utils.misc_utils import MODEL_NAME_TO_TYPE, STRUCTURE_LEARNING_DIR
+from structure_learning.utils.misc_utils import STRUCTURE_LEARNING_DIR, load_meta
 
 DATASETS_DIR = STRUCTURE_LEARNING_DIR / "datasets"
 TRAIN_SCRIPT = STRUCTURE_LEARNING_DIR / "dag_gflownet" / "train.py"
@@ -32,16 +32,23 @@ DATASET_PARAMS = {
     "bnrep_consequenceCovid": {"burnin": 150, "thinning": 15, "block_size": 2, "sweep": True},
 }
 
-LLM_DATA_SAMPLING_METHODS = frozenset(
-    {
-        "direct",
-        "gibbs",
-        "direct_continuation",
-        "gibbs_continuation",
-        "barker_gibbs",
-        "gambling_gibbs",
-    }
-)
+
+def resolve_dataset_params(
+    dataset_name: str,
+    block_size: int | None = None,
+    no_sweep: bool = False,
+) -> dict:
+    """DATASET_PARAMS entry, with the Gibbs chain rescaled for a block-size
+    override the same way generate_llm_data.py derives it (thinning keeps two
+    sweeps between retained samples, burn_in stays 10 thinnings, capped)."""
+    params = dict(DATASET_PARAMS[dataset_name])
+    if block_size is not None and block_size != params["block_size"]:
+        meta = load_meta(DATASETS_DIR / dataset_name / "meta_data.json")
+        thinning = math.ceil((len(meta["features"]) * 2) / block_size)
+        params.update(block_size=block_size, thinning=thinning, burnin=min(1000, 10 * thinning))
+    if no_sweep:
+        params["sweep"] = False
+    return params
 
 
 @dataclass(frozen=True)
@@ -81,8 +88,10 @@ def build_data_path(
     model_name: str,
     seed: int,
     manual_reasoning: bool,
+    block_size: int | None = None,
+    no_sweep: bool = False,
 ) -> Path:
-    params = DATASET_PARAMS[dataset_name]
+    params = resolve_dataset_params(dataset_name, block_size=block_size, no_sweep=no_sweep)
     temp = llm_data_temperature(sampling_method, manual_reasoning)
     filename = get_llm_data_run_name(
         sampling_method=sampling_method,
@@ -109,13 +118,24 @@ def build_llm_exp_name(
     seed: int,
     manual_reasoning: bool,
     base_prior_name: str,
+    block_size: int | None = None,
+    no_sweep: bool = False,
 ) -> str:
     model_slug = model_name.replace("/", "--")
     reasoning_suffix = "_reasoning" if manual_reasoning else ""
     temp = llm_data_temperature(sampling_method, manual_reasoning)
+    # A non-default chain layout is a different arm of the experiment, so it gets
+    # its own results directory; the default stays untagged to keep the paths of
+    # the results already on disk. Same for the Gibbs block/sweep ablations.
+    variant_suffix = ""
+    if "gibbs" in sampling_method:
+        if block_size is not None:
+            variant_suffix += f"_block{block_size}"
+        if no_sweep:
+            variant_suffix += "_nosweep"
     return (
         f"{model_slug}/{sampling_method}{reasoning_suffix}"
-        f"_temp{temp}_base{base_prior_name}_gamma{gamma}_sd{seed}"
+        f"_temp{temp}_base{base_prior_name}_gamma{gamma}{variant_suffix}_sd{seed}"
     )
 
 
@@ -182,6 +202,8 @@ def iter_experiments(args: argparse.Namespace) -> list[Experiment]:
                                     model_name=args.model_name,
                                     seed=seed,
                                     manual_reasoning=args.manual_reasoning,
+                                    block_size=args.llm_block_size,
+                                    no_sweep=args.llm_no_sweep,
                                 ),
                                 exp_name=build_llm_exp_name(
                                     model_name=args.model_name,
@@ -190,6 +212,8 @@ def iter_experiments(args: argparse.Namespace) -> list[Experiment]:
                                     seed=seed,
                                     manual_reasoning=args.manual_reasoning,
                                     base_prior_name=base_prior_name,
+                                    block_size=args.llm_block_size,
+                                    no_sweep=args.llm_no_sweep,
                                 ),
                             )
                         )
@@ -431,7 +455,7 @@ if __name__ == "__main__":
         "--llm_data_sampling_methods",
         nargs="+",
         default=None,
-        choices=LLM_DATA_SAMPLING_METHODS,
+        choices=["direct", "gibbs", "barker_gibbs", "gambling_gibbs"],
         help="Sampling methods of the LLM prior data (required when --prior llm_data).",
     )
     parser.add_argument(
@@ -450,6 +474,24 @@ if __name__ == "__main__":
         "--manual_reasoning",
         action="store_true",
         help="Use prior data generated with manual reasoning.",
+    )
+    parser.add_argument(
+        "--llm_block_size",
+        type=int,
+        default=None,
+        help=(
+            "Gibbs block size the LLM prior data was generated with, when it differs "
+            "from the DATASET_PARAMS default. Rescales burn-in/thinning the same way "
+            "generate_llm_data.py does and tags the results directory with _block<B>."
+        ),
+    )
+    parser.add_argument(
+        "--llm_no_sweep",
+        action="store_true",
+        help=(
+            "Use LLM prior data generated with --no_sweep (random-block Gibbs). "
+            "Tags the results directory with _nosweep."
+        ),
     )
     parser.add_argument(
         "--seeds",
@@ -508,7 +550,7 @@ if __name__ == "__main__":
         if args.model_name not in MODEL_NAME_TO_TYPE:
             raise ValueError(
                 f"Unknown model_name: {args.model_name!r}. "
-                f"Add it to MODEL_NAME_TO_TYPE in structure_learning/utils/misc_utils.py."
+                f"Add it to MODEL_NAME_TO_TYPE in common/utils.py."
             )
         if args.manual_reasoning and MODEL_NAME_TO_TYPE[args.model_name] != "instruct":
             raise ValueError(

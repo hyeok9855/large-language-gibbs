@@ -17,6 +17,14 @@ First, run the following command to install the dependencies (this will automati
 uv sync
 ```
 
+### Models and chat templates
+
+All experiments share one model registry, `MODEL_NAME_TO_TYPE` in `common/utils.py`, which maps a model name to `base` or `instruct`. If your model is not listed, add it there.
+
+Chat-template overrides for vLLM are in `common/chat_templates/`. Serve a model with `vllm serve <model> --chat-template common/chat_templates/<template>.jinja` when needed:
+
+- `olmo31_think_no_think.jinja`: Olmo-3.1 Think models without `<think>` tag; we don't use the original thinking tag because it is too slow.
+
 
 ## Experiment1: Sampling from simple distributions (§4)
 
@@ -28,8 +36,6 @@ This experiment queries an OpenAI-compatible chat/completions API.
 
 - Local server: pass `--port`; the script uses `http://localhost:<port>/v1`.
 - Remote server: pass both `--base_url` and `--api_key`.
-
-Known model names are listed in `sampling/utils.py`; if your model is not listed, you should add it to the dictionary.
 
 ### Usage
 
@@ -106,16 +112,14 @@ uv run python consistent_reasoning/run_eval.py \
 
 - `--algorithm`: The elicitation algorithm to evaluate. Choices are:
   - `zeroshot`: Zero-shot with no context.
-  - `npass`: N-pass autoregressive generation in random order.
+  - `npass`: (AR-Fixed / AR-Random in the paper) Autoregressive generation. By default, the decoding order is random; pass `--fixed_order` to fix the order.
   - `gibbs`: Gibbs sampling.
-  - `barker_gibbs`: Barker Gibbs sampling.
-  - `gambling_gibbs`: Gambling Gibbs sampling.
   - `icm`: Iterated Conditional Modes (ICM; [Wen et al., 2025](https://arxiv.org/abs/2506.10139)) simulated annealing search.
 - `--testbed`: Dataset name (`truthfulQA`, `gsm8k`, `alpaca`).
 - `--model`: Model name registered on the server (e.g., `meta-llama/Llama-3.1-8B`).
 - `--n_partitions`: Number of random evaluation partitions to run (default `5`).
 - `--num_workers`: Number of chunks/partitions to execute concurrently (default `1`).
-- `--chunk_size_cis`: Size of dataset chunks for partition evaluation (for `npass`, `gibbs` and its variants, and `icm`; default `16`).
+- `--chunk_size_cis`: Size of dataset chunks for partition evaluation (for `npass`, `gibbs`, and `icm`; default `16`).
 
 ## Experiment3: Bayesian structure learning (§5.2)
 
@@ -152,8 +156,11 @@ This step queries an OpenAI-compatible chat/completions API.
 - Local server: pass `--port`; the script uses `http://localhost:<port>/v1`.
 - Remote server: pass both `--base_url` and `--api_key`.
 
-Known model names are listed in `structure_learning/utils/misc_utils.py`; if your model is not listed, you should add it to the dictionary.
+`--sampling_method` selects how the LLM generates each data point:
 
+- `direct`: (AR-Random in the paper) features are filled one at a time in random order.
+- `gibbs`: Gibbs sampling, iterative resampling of variables conditioned on others using the LLM's conditional distributions.
+- `barker_gibbs`, `gambling_gibbs`: Barker / Gambling Gibbs sampling; instruction-tuned models only; `--manual_reasoning` is supported for these two.
 
 Assuming a local server on port 8000 serving `meta-llama/Llama-3.1-8B`, generate prior data for the `bnrep_knowledge` dataset with Gibbs sampling:
 
@@ -195,7 +202,7 @@ uv run python structure_learning/train_dag_gflownet.py \
   --seeds 0 1 2
 ```
 
-For the LLM data prior, `--prior llm_data`, `--llm_data_sampling_method`, and `--model_name` are required. The following command trains DAG-GFlowNet with LLM data generated with Gibbs sampling for two datasets and three seeds:
+For the LLM data prior, `--prior llm_data`, `--llm_data_sampling_methods`, and `--model_name` are required. The following command trains DAG-GFlowNet with LLM data generated with Gibbs sampling for two datasets and three seeds:
 
 ```bash
 uv run python structure_learning/train_dag_gflownet.py \
@@ -203,15 +210,13 @@ uv run python structure_learning/train_dag_gflownet.py \
   --jobs_per_gpu 2 \
   --datasets bnrep_knowledge bnrep_tubercolosis \
   --prior llm_data \
-  --llm_data_sampling_method gibbs \
+  --llm_data_sampling_methods gibbs \
   --model_name meta-llama/Llama-3.1-8B \
   --seeds 0 1 2 \
   --gammas 0.5
 ```
 
-The base prior mixed into the LLM data prior defaults to `uniform`; override it with `--llm_data_base_prior`.
-
-The results are saved under `structure_learning/results/`.
+The base prior mixed into the LLM data prior defaults to `uniform`; override it with `--llm_data_base_prior`. Results are saved to `structure_learning/results/`.
 
 After training, visualise the results with:
 ```bash

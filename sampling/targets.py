@@ -1,7 +1,5 @@
 """Registry of target distributions for the sampling experiments."""
 
-from __future__ import annotations
-
 import math
 import re
 from argparse import ArgumentParser, Namespace

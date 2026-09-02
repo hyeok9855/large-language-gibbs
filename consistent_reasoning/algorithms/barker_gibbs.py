@@ -10,8 +10,8 @@ from typing import Any
 import numpy as np
 
 from consistent_reasoning.algorithms.gibbs import (
-    DemoPoolPrior,
-    LoggedGibbsLLMPrior,
+    CustomGibbsLLMPrior,
+    CustomLLMPrior,
     SweepSchedule,
     apply_assignment_to_demos,
     build_schema,
@@ -20,7 +20,7 @@ from consistent_reasoning.algorithms.gibbs import (
 from consistent_reasoning.models import OpenAICompatLLM
 
 
-class CustomBarkerPrior(DemoPoolPrior):
+class CustomBarkerLLMPrior(CustomLLMPrior):
     def __init__(self, llm: OpenAICompatLLM, demonstrations: dict[int, dict[str, Any]]):
         super().__init__(llm, demonstrations)
         if not self.llm.instruction_tuned:
@@ -100,7 +100,7 @@ def run_barker_gibbs_search(
         log_path = Path(log_path)
         log_path.unlink(missing_ok=True)
 
-    llm_prior = CustomBarkerPrior(llm=llm, demonstrations=demonstrations)
+    llm_prior = CustomBarkerLLMPrior(llm=llm, demonstrations=demonstrations)
 
     state = {"step": 0}
 
@@ -127,7 +127,7 @@ def run_barker_gibbs_search(
                 f"pred_dist={metrics['train_predict_distribution']}"
             )
 
-    gibbs = LoggedGibbsLLMPrior(
+    gibbs = CustomGibbsLLMPrior(
         llm_prior=llm_prior,
         burn_in=args.burn_in,
         thinning=args.thinning,

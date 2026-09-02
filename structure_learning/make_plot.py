@@ -7,8 +7,16 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from structure_learning.utils.misc_utils import MODEL_NAME_TO_TYPE, STRUCTURE_LEARNING_DIR
+from common.utils import MODEL_NAME_TO_TYPE
+from structure_learning.utils.misc_utils import STRUCTURE_LEARNING_DIR
 
+# (base model, instruct model)
+MODEL_FAMILIES: list[tuple[str, ...]] = [
+    ("meta-llama/Llama-3.1-8B", "meta-llama/Llama-3.1-8B-Instruct"),
+    ("meta-llama/Llama-3.1-70B", "meta-llama/Llama-3.1-70B-Instruct"),
+    ("allenai/Olmo-3-1125-32B", "allenai/Olmo-3.1-32B-Instruct"),
+    ("google/gemma-4-31B", "google/gemma-4-31B-it"),
+]
 # (model, method, temp, base_prior, gamma)
 AlgoKey = tuple[str, str, float | None, str | None, float | None]
 
@@ -20,31 +28,8 @@ EDGE_BETA_PATTERN = re.compile(r"^edge-beta(\d+\.?\d*)$")
 RUN_SUFFIX_PATTERN = re.compile(r"_sd(\d+)$")
 
 
-def hf_to_slug(hf: str) -> str:
-    """
-    Example: "meta-llama/Llama-3.1-8B" -> "meta-llama--Llama-3.1-8B".
-    """
-    return hf.replace("/", "--")
-
-
-def slug_to_hf(slug: str) -> str | None:
-    """
-    Example: "meta-llama--Llama-3.1-8B" -> "meta-llama/Llama-3.1-8B".
-    """
-    for hf in MODEL_NAME_TO_TYPE:
-        if hf_to_slug(hf) == slug:
-            return hf
-    return None
-
-
 def model_families() -> list[tuple[str, tuple[str, ...]]]:
-    """All base/instruct families defined in MODEL_NAME_TO_TYPE."""
-    bases = [hf for hf, kind in MODEL_NAME_TO_TYPE.items() if kind == "base"]
-    instructs = [hf for hf, kind in MODEL_NAME_TO_TYPE.items() if kind == "instruct"]
-    return [
-        (base_hf, (hf_to_slug(base_hf), hf_to_slug(instruct_hf)))
-        for base_hf, instruct_hf in zip(bases, instructs, strict=True)
-    ]
+    return [(family[0], tuple(hf.replace("/", "--") for hf in family)) for family in MODEL_FAMILIES]
 
 
 def families_with_results(base: Path) -> list[tuple[str, tuple[str, ...]]]:
@@ -52,7 +37,7 @@ def families_with_results(base: Path) -> list[tuple[str, tuple[str, ...]]]:
     known_slugs = {
         p.name
         for p in base.iterdir()
-        if p.is_dir() and p.name != "uninformative" and slug_to_hf(p.name) is not None
+        if p.is_dir() and p.name.replace("--", "/") in MODEL_NAME_TO_TYPE
     }
     return [
         (base_hf, family_slugs)
@@ -61,16 +46,9 @@ def families_with_results(base: Path) -> list[tuple[str, tuple[str, ...]]]:
     ]
 
 
-def to_instruct_method(method: str) -> str:
-    if method in {"direct", "gibbs", "direct_continuation", "gibbs_continuation"}:
-        return f"{method}_instruct"
-    return method
-
-
 def canonical_method(method: str, model_slug: str) -> str:
-    hf = slug_to_hf(model_slug)
-    if hf is not None and MODEL_NAME_TO_TYPE[hf] == "instruct":
-        method = to_instruct_method(method)
+    if MODEL_NAME_TO_TYPE.get(model_slug.replace("--", "/")) == "instruct":
+        return f"{method}_instruct"
     return method
 
 
@@ -78,55 +56,17 @@ def _plot_method_key(method: str) -> str:
     return "edge" if "edge" in method else method
 
 
-METHOD_DISPLAY = {
-    "uniform": "Uniform",
-    "edge": "Edge",
-    "fair": "Fair",
-    "direct": "Direct",
-    "direct_instruct": "Direct-Inst.",
-    "direct_continuation": "Direct-Cont.",
-    "direct_continuation_instruct": "Direct-Cont.-Inst.",
-    "gibbs": "Gibbs",
-    "gibbs_instruct": "Gibbs-Inst.",
-    "gibbs_continuation": "Gibbs-Cont.",
-    "gibbs_continuation_instruct": "Gibbs-Cont.-Inst.",
-    "barker_gibbs": "Barker-Gibbs",
-    "gambling_gibbs": "Gambl.-Gibbs",
+METHOD_DISPLAY_COLOR = {
+    "uniform": ("Uniform", "#1f77b4"),
+    "direct": ("AR-Rand.", "#ffbb78"),
+    "direct_instruct": ("AR-Rand.-Inst.", "#aec7e8"),
+    "gibbs": ("Gibbs", "#d62728"),
+    "gibbs_instruct": ("Gibbs-Inst.", "#9467bd"),
+    "barker_gibbs_instruct": ("Barker-Gibbs", "#e377c2"),
+    "gambling_gibbs_instruct": ("Gambl.-Gibbs", "#98df8a"),
 }
 
 TEMP_DISPLAY = [0.0, 1.0]
-
-METHOD_ORDER = [
-    "uniform",
-    "edge",
-    "fair",
-    "direct",
-    "direct_instruct",
-    "direct_continuation",
-    "direct_continuation_instruct",
-    "gibbs",
-    "gibbs_instruct",
-    "gibbs_continuation",
-    "gibbs_continuation_instruct",
-    "barker_gibbs",
-    "gambling_gibbs",
-]
-
-PALETTE = {
-    "uniform": "#1f77b4",
-    "edge": "#1f77b4",
-    "fair": "#1f77b4",
-    "direct": "#ffbb78",
-    "direct_instruct": "#aec7e8",
-    "direct_continuation": "#ffbb78",
-    "direct_continuation_instruct": "#aec7e8",
-    "gibbs": "#d62728",
-    "gibbs_instruct": "#9467bd",
-    "gibbs_continuation": "#d62728",
-    "gibbs_continuation_instruct": "#9467bd",
-    "barker_gibbs": "#e377c2",
-    "gambling_gibbs": "#98df8a",
-}
 
 
 def _normalize_method(method: str) -> str:
@@ -158,7 +98,11 @@ def load_results(base_dir: Path) -> dict[AlgoKey, list[dict]]:
     for model_dir in sorted(base_dir.iterdir()):
         if not model_dir.is_dir():
             continue
-        if model_dir.name != "uninformative" and slug_to_hf(model_dir.name) is None:
+
+        if (
+            model_dir.name != "uninformative"
+            and model_dir.name.replace("--", "/") not in MODEL_NAME_TO_TYPE
+        ):
             continue
         for exp_dir in sorted(model_dir.iterdir()):
             if not exp_dir.is_dir():
@@ -191,7 +135,7 @@ def group_family_results(
         model, method, temp, base_prior, gamma_key = key
 
         if model == "uninformative":
-            if _plot_method_key(method) in METHOD_DISPLAY:
+            if _plot_method_key(method) in METHOD_DISPLAY_COLOR:
                 merged[key].extend(runs)
             continue
 
@@ -201,7 +145,7 @@ def group_family_results(
             continue
 
         plot_method = canonical_method(method, model)
-        if plot_method not in METHOD_DISPLAY:
+        if plot_method not in METHOD_DISPLAY_COLOR:
             continue
 
         plot_key = (family_base, plot_method, temp, base_prior, gamma_key)
@@ -215,20 +159,19 @@ def _model_sort_idx(model: str) -> tuple[int, str]:
     return (0 if model == "uninformative" else 1, model)
 
 
-def _sort_key(key: AlgoKey) -> tuple[tuple[int, str], int, float, str, float]:
-    model, method, temp, base_prior, gamma = key
+def _sort_key(key: AlgoKey) -> tuple[tuple[int, str], int, float, str]:
+    model, method, temp, base_prior, _gamma = key
     plot_method = _plot_method_key(method)
     method_idx = (
-        METHOD_ORDER.index(_plot_method_key(method))
-        if plot_method in METHOD_ORDER
-        else len(METHOD_ORDER)
+        list(METHOD_DISPLAY_COLOR).index(plot_method)
+        if plot_method in METHOD_DISPLAY_COLOR
+        else len(METHOD_DISPLAY_COLOR)
     )
     return (
         _model_sort_idx(model),
         method_idx,
         temp if temp is not None else -1.0,
         base_prior if base_prior is not None else "",
-        gamma if gamma is not None else -1.0,
     )
 
 
@@ -237,14 +180,14 @@ def _label(key: AlgoKey) -> str:
     plot_method = _plot_method_key(method)
     if plot_method == "edge":
         m_edge = EDGE_BETA_PATTERN.match(method)
-        display = f"Edge (β={m_edge.group(1)})" if m_edge else METHOD_DISPLAY["edge"]
+        display = f"Edge (β={m_edge.group(1)})"
     else:
-        display = METHOD_DISPLAY.get(plot_method, method.capitalize())
+        display = METHOD_DISPLAY_COLOR[plot_method][0]
     if base_prior is not None and base_prior != "uniform":
         display = f"{display}\n({base_prior})"
-    if temp is None:
-        return display
-    # return f"{display}\nt={temp:g}"
+    if temp is not None:
+        if ("gambling" in method and temp != 0.0) or ("gambling" not in method and temp != 1.0):
+            display = f"{display}\nt={temp:g}"
     return display
 
 
@@ -259,7 +202,7 @@ def make_boxplot(
     keys = sorted(grouped.keys(), key=_sort_key)
     n_groups = len(keys)
     labels = [_label(k) for k in keys]
-    colors = [PALETTE.get(_plot_method_key(k[1]), "#999999") for k in keys]
+    colors = [METHOD_DISPLAY_COLOR[k[1]][1] for k in keys]
 
     if figsize is None:
         figsize = (max(10.0, 1.0 * n_groups), 4.5)
@@ -342,13 +285,13 @@ def plot_family(
     family_id: str,
     family_slugs: tuple[str, ...],
     gamma: float,
+    results: dict[AlgoKey, list[dict]],
 ) -> None:
-    family_base = hf_to_slug(family_id)
+    family_base = family_id.replace("/", "--")
     available_slugs = [slug for slug in family_slugs if (base / slug).is_dir()]
 
-    grouped = load_results(base)
     grouped = group_family_results(
-        grouped,
+        results,
         family_slugs=frozenset(family_slugs),
         family_base=family_base,
         gamma=gamma,
@@ -377,8 +320,8 @@ def plot_family(
     make_boxplot(grouped, metrics, title=title, save_path=base / f"{plot_stem}")
 
 
-def main(args):
-    base = BASE_DIR / args.dataset_name / f"n{args.n_samples}"
+def main(n_samples: int, dataset_name: str, gamma: float) -> None:
+    base = BASE_DIR / dataset_name / f"n{n_samples}"
     if not base.exists():
         raise FileNotFoundError(f"Results directory not found: {base}")
 
@@ -389,17 +332,19 @@ def main(args):
             f"No known model directories found under {base}. Available: {available}"
         )
 
+    results = load_results(base)
     for family_id, family_slugs in families:
         try:
             plot_family(
                 base,
-                dataset_name=args.dataset_name,
+                dataset_name=dataset_name,
                 family_id=family_id,
                 family_slugs=family_slugs,
-                gamma=args.gamma,
+                gamma=gamma,
+                results=results,
             )
         except FileNotFoundError as exc:
-            print(f"Skipping {args.dataset_name} {family_id} gamma={args.gamma}: {exc}")
+            print(f"Skipping {dataset_name} {family_id} gamma={gamma}: {exc}")
 
 
 if __name__ == "__main__":
@@ -422,11 +367,9 @@ if __name__ == "__main__":
         )
 
     for dataset in dataset_names:
-        args.dataset_name = dataset
         for gamma in args.gammas:
-            args.gamma = gamma
             try:
-                main(args)
+                main(args.n_samples, dataset, gamma)
             except FileNotFoundError as exc:
                 print(f"Skipping {dataset} gamma={gamma}: {exc}")
                 continue

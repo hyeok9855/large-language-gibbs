@@ -10,8 +10,8 @@ from typing import Any
 import numpy as np
 
 from consistent_reasoning.algorithms.gibbs import (
-    DemoPoolPrior,
-    LoggedGibbsLLMPrior,
+    CustomGibbsLLMPrior,
+    CustomLLMPrior,
     SweepSchedule,
     apply_assignment_to_demos,
     build_schema,
@@ -20,7 +20,7 @@ from consistent_reasoning.algorithms.gibbs import (
 from consistent_reasoning.models import OpenAICompatLLM
 
 
-class CustomGamblingPrior(DemoPoolPrior):
+class CustomGamblingLLMPrior(CustomLLMPrior):
     def __init__(
         self,
         llm: OpenAICompatLLM,
@@ -139,7 +139,7 @@ def run_gambling_gibbs_search(
         log_path = Path(log_path)
         log_path.unlink(missing_ok=True)
 
-    llm_prior = CustomGamblingPrior(
+    llm_prior = CustomGamblingLLMPrior(
         llm=llm,
         demonstrations=demonstrations,
         manual_reasoning=args.manual_reasoning,
@@ -170,7 +170,7 @@ def run_gambling_gibbs_search(
                 f"pred_dist={metrics['train_predict_distribution']}"
             )
 
-    gibbs = LoggedGibbsLLMPrior(
+    gibbs = CustomGibbsLLMPrior(
         llm_prior=llm_prior,
         burn_in=args.burn_in,
         thinning=args.thinning,

@@ -9,12 +9,17 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from priorbot.llm import OpenAICompatLLM
-from priorbot.priors import BarkerGibbsLLMPrior, GamblingGibbsLLMPrior, GibbsLLMPrior, LLMPrior
+from priorbot.priors import BarkerGibbsLLMPrior, GamblingGibbsLLMPrior, GibbsLLMPrior
 
-from structure_learning.pinned_llm import PinnedLLMPrior
+from common.utils import MODEL_NAME_TO_TYPE
+from structure_learning.continuation import (
+    ContinuationLLMPrior,
+    ContinuationOpenAICompatLLM,
+    partial_json,
+)
 from structure_learning.utils.bn_utils import get_feature_renames
 from structure_learning.utils.llm_data_utils import get_llm_data_run_name
-from structure_learning.utils.misc_utils import DATASETS_DIR, MODEL_NAME_TO_TYPE, load_meta
+from structure_learning.utils.misc_utils import DATASETS_DIR, load_meta
 from structure_learning.utils.prompt_utils import (
     build_system_prompt,
     get_dataset_description,
@@ -67,7 +72,12 @@ def main(args: Namespace) -> None:
     full_schema = build_schema(meta)
     system_prompt = "" if args.model_type == "base" else build_system_prompt(meta)
 
-    llm = OpenAICompatLLM(
+    llm_cls = (
+        ContinuationOpenAICompatLLM
+        if args.sampling_method in ["direct", "gibbs"]
+        else OpenAICompatLLM
+    )
+    llm = llm_cls(
         base_url=args.base_url,
         model_name=args.model_name,
         system_prompt=system_prompt,
@@ -79,102 +89,39 @@ def main(args: Namespace) -> None:
 
     match args.sampling_method:
         case "direct" | "gibbs":
-
-            def llm_template(schema: dict[str, Any], observed: dict[str, Any] | None = None) -> str:
-                variables_to_resample = [v for v in schema["required"] if v != "reasoning"]
-
-                observed = observed or {}
-                dataset_description = get_dataset_description(meta)
-                feature_description = get_feature_description(
-                    meta, list(observed.keys()), variables_to_resample
-                )
-                schema_str = json.dumps(schema)
-                if observed:
-                    observed_str = json.dumps(observed)
-                    if args.model_type == "base":
-                        return (
-                            f"{dataset_description}\n{feature_description}\n"
-                            f"[Data point] {observed_str}"
-                        )
-                    else:
-                        required_str = '"' + '", "'.join(variables_to_resample) + '"'
-                        return (
-                            f"{dataset_description}\n{feature_description}\n"
-                            f"We have already observed the following features: {observed_str}. "
-                            f"Generate the value(s) for {required_str} according to the following "
-                            f"schema: {schema_str}."
-                        )
-                else:
-                    if args.model_type == "base":
-                        generation_prompt = "[Data point] "
-                    else:
-                        generation_prompt = (
-                            f"Generate a data point according to the following schema: {schema_str}"
-                        )
-                    return f"{dataset_description}\n{feature_description}\n{generation_prompt}"
-
-            llm_prior = LLMPrior(
-                llm=llm,
-                template=llm_template,
-                manual_reasoning=args.manual_reasoning,
-            )
-
             if args.manual_reasoning:
-                llm_prior.reasoning_prompt = llm_prior.reasoning_prompt.replace(
-                    "step-by-step", "brief"
+                raise ValueError("Manual reasoning is not supported for direct or gibbs samplers.")
+
+            def llm_template(
+                observed: dict[str, Any] | None = None,
+                next_key: str | None = None,
+                key_order: list[str] | None = None,
+            ) -> str | tuple[str, str]:
+                if not next_key or not key_order:
+                    raise ValueError("Continuation LLM sampling requires next_key and key_order.")
+                description = (
+                    f"{get_dataset_description(meta)}\n"
+                    f"{get_feature_description(meta, [], key_order)}"
                 )
+                prefill = partial_json(observed, next_key)
+                if args.model_type == "base":
+                    return f"{description}\n[Data point] {prefill}"
+                ordered_schema = {
+                    "type": "object",
+                    "properties": {k: full_schema["properties"][k] for k in key_order},
+                    "required": key_order,
+                }
+                return (
+                    f"{description}\nGenerate a data point according to the "
+                    f"following schema: {json.dumps(ordered_schema)}",
+                    prefill,
+                )
+
+            llm_prior = ContinuationLLMPrior(llm=llm, template=llm_template)
+
             if args.sampling_method == "direct":
                 prior = llm_prior
             else:  # gibbs
-                prior = GibbsLLMPrior(
-                    llm_prior=llm_prior,
-                    burn_in=args.burn_in,
-                    thinning=args.thinning,
-                    block_size=args.block_size,
-                    sweep=args.sweep,
-                )
-
-        case "direct_continuation" | "gibbs_continuation":
-            # Continuation-style conditioning: observed values are pinned first inside the
-            # generation schema (see PinnedLLMPrior), so forced decoding emits them as a
-            # prefix and the resampled features are generated as a continuation of one
-            # natural JSON object.
-            if args.manual_reasoning:
-                raise ValueError("Manual reasoning is not supported for continuation samplers.")
-
-            def llm_template(schema: dict[str, Any], observed: dict[str, Any] | None = None) -> str:
-                observed = observed or {}
-                variables_to_resample = [
-                    v for v in schema["required"] if v != "reasoning" and v not in observed
-                ]
-
-                dataset_description = get_dataset_description(meta)
-                feature_description = get_feature_description(
-                    meta, list(observed.keys()), variables_to_resample
-                )
-                if args.model_type == "base":
-                    return f"{dataset_description}\n{feature_description}\n[Data point] "
-                else:
-                    ordered_schema = {"type": "object", "properties": {}, "required": []}
-                    for k in list(observed.keys()) + variables_to_resample:
-                        ordered_schema["properties"][k] = full_schema["properties"][k]
-                        ordered_schema["required"].append(k)
-                    ordered_schema_str = json.dumps(ordered_schema)
-                    return (
-                        f"{dataset_description}\n{feature_description}\n"
-                        f"Generate a data point according to the following schema: "
-                        f"{ordered_schema_str}"
-                    )
-
-            llm_prior = PinnedLLMPrior(
-                llm=llm,
-                template=llm_template,
-                feature_schemas=full_schema["properties"],
-            )
-
-            if args.sampling_method == "direct_continuation":
-                prior = llm_prior
-            else:  # gibbs_continuation
                 prior = GibbsLLMPrior(
                     llm_prior=llm_prior,
                     burn_in=args.burn_in,
@@ -324,8 +271,6 @@ if __name__ == "__main__":
         choices=[
             "direct",
             "gibbs",
-            "direct_continuation",
-            "gibbs_continuation",
             "barker_gibbs",
             "gambling_gibbs",
         ],
@@ -364,11 +309,6 @@ if __name__ == "__main__":
             raise ValueError(
                 f"--manual_reasoning is only supported for instruct models; got "
                 f"{args.model_type} model {args.model_name!r}."
-            )
-        if "continuation" in args.sampling_method:
-            raise ValueError(
-                f"--manual_reasoning is not supported for continuation samplers "
-                f"({args.sampling_method!r})."
             )
         if args.temperature <= 0.0:
             raise ValueError("--manual_reasoning requires temperature > 0.0.")

@@ -12,8 +12,6 @@ Usage:
     python eval_sets/build_eval_sets.py --testbed truthfulQA
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import random

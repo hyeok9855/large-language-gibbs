@@ -301,9 +301,6 @@ def main():
             block_size=args.gibbs_block_size,
             sweep=args.sweep,
         )
-        barker_gibbs_prior.reasoning_prompt = barker_gibbs_prior.reasoning_prompt.replace(
-            "step-by-step", "brief"
-        )
         barker_samples = barker_gibbs_prior.sample_parallel(
             kvar_n_samples // args.n_chains,
             [gibbs_schema] * args.n_chains,
@@ -331,9 +328,6 @@ def main():
             sweep=args.sweep,
             manual_reasoning=args.manual_reasoning,
             template=gambling_template,
-        )
-        gambling_gibbs_prior.reasoning_prompt = gambling_gibbs_prior.reasoning_prompt.replace(
-            "step-by-step", "brief"
         )
         gambling_samples = gambling_gibbs_prior.sample_parallel(
             kvar_n_samples // args.n_chains,

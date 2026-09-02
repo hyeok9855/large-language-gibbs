@@ -2,8 +2,6 @@
 with random partitioning.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -14,11 +12,13 @@ from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from common.utils import MODEL_NAME_TO_TYPE
 from consistent_reasoning.algorithms.barker_gibbs import run_barker_gibbs_search
 from consistent_reasoning.algorithms.gambling_gibbs import run_gambling_gibbs_search
 from consistent_reasoning.algorithms.gibbs import run_gibbs_search
@@ -50,13 +50,6 @@ def _chunk_log(message: str) -> None:
 
 
 # --- Hyperparam handling ----------------------------------------------------
-
-INSTRUCT_MODELS = [
-    "meta-llama/Llama-3.1-8B-Instruct",
-    "meta-llama/Llama-3.1-70B-Instruct",
-    "allenai/Olmo-3.1-32B-Instruct",
-    "google/gemma-4-31B-it",
-]
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful assistant. You verify whether a claim correctly "
@@ -271,8 +264,7 @@ def _run_label_predict_chunk(
     eval_set_meta: dict[str, Any],
     model_api: Any,
     run_name: str,
-    search_fn: Any,
-    verbose: bool = False,
+    search_fn: Callable[..., tuple[dict[int, dict[str, Any]], dict[str, Any]]],
 ) -> dict[str, Any]:
     chunk_cids = [item["consistency_id"] for item in items]
     cache_args = relevant_args_snapshot(args)
@@ -310,7 +302,7 @@ def _run_label_predict_chunk(
         args,
         model_api,
         log_path=log_path,
-        verbose=verbose,
+        verbose=args.num_workers <= 1,
     )
     duration = time.time() - t0
 
@@ -369,48 +361,6 @@ def _run_label_predict_chunk(
         f"acc={record['chunk_accuracy']}"
     )
     return record
-
-
-def run_gibbs_chunk(**kwargs: Any) -> dict[str, Any]:
-    args = kwargs["args"]
-    parallel = args.num_workers > 1
-    return _run_label_predict_chunk(
-        search_fn=run_gibbs_search,
-        verbose=not parallel,
-        **kwargs,
-    )
-
-
-def run_barker_gibbs_chunk(**kwargs: Any) -> dict[str, Any]:
-    args = kwargs["args"]
-    parallel = args.num_workers > 1
-    return _run_label_predict_chunk(
-        search_fn=run_barker_gibbs_search,
-        verbose=not parallel,
-        **kwargs,
-    )
-
-
-def run_gambling_gibbs_chunk(**kwargs: Any) -> dict[str, Any]:
-    args = kwargs["args"]
-    parallel = args.num_workers > 1
-    return _run_label_predict_chunk(
-        search_fn=run_gambling_gibbs_search,
-        verbose=not parallel,
-        **kwargs,
-    )
-
-
-def run_zeroshot_chunk(**kwargs: Any) -> dict[str, Any]:
-    args = kwargs["args"]
-    parallel = args.num_workers > 1
-    return _run_label_predict_chunk(search_fn=run_zeroshot_search, verbose=not parallel, **kwargs)
-
-
-def run_npass_chunk(**kwargs: Any) -> dict[str, Any]:
-    args = kwargs["args"]
-    parallel = args.num_workers > 1
-    return _run_label_predict_chunk(search_fn=run_npass_search, verbose=not parallel, **kwargs)
 
 
 def _run_single_chunk(
@@ -750,14 +700,20 @@ def main(args: argparse.Namespace) -> None:
     if not selected_partitions:
         raise ValueError(f"No partition index {args.only_partition} in plan.")
 
-    chunk_runner = {
-        "icm": run_icm_chunk,
-        "gibbs": run_gibbs_chunk,
-        "barker_gibbs": run_barker_gibbs_chunk,
-        "gambling_gibbs": run_gambling_gibbs_chunk,
-        "zeroshot": run_zeroshot_chunk,
-        "npass": run_npass_chunk,
-    }[args.algorithm]
+    if args.algorithm == "icm":
+        chunk_runner = run_icm_chunk
+    else:
+        try:
+            search_fn = {
+                "gibbs": run_gibbs_search,
+                "barker_gibbs": run_barker_gibbs_search,
+                "gambling_gibbs": run_gambling_gibbs_search,
+                "zeroshot": run_zeroshot_search,
+                "npass": run_npass_search,
+            }[args.algorithm]
+        except KeyError as e:
+            raise ValueError(f"Unsupported algorithm: {args.algorithm}") from e
+        chunk_runner = partial(_run_label_predict_chunk, search_fn=search_fn)
 
     chunk_jobs: list[tuple[int, int, list[dict[str, Any]], int]] = []
     for p_info in selected_partitions:
@@ -890,9 +846,11 @@ if __name__ == "__main__":
     if args.num_workers < 1:
         raise ValueError(f"--num_workers must be >= 1, got {args.num_workers}.")
 
-    args.instruction_tuned = False
-    if args.model in INSTRUCT_MODELS:
-        args.instruction_tuned = True
+    if args.model not in MODEL_NAME_TO_TYPE:
+        raise ValueError(
+            f"Unknown model {args.model!r}; add it to MODEL_NAME_TO_TYPE in common/utils.py."
+        )
+    args.instruction_tuned = MODEL_NAME_TO_TYPE[args.model] == "instruct"
 
     args.system_prompt = DEFAULT_SYSTEM_PROMPT if args.instruction_tuned else None
 

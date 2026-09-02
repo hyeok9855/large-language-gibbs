@@ -3,14 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 import random
-from abc import ABC, abstractmethod
 from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, cast
 
 import numpy as np
-from priorbot.priors import GibbsLLMPrior, Prior
+from priorbot.priors import GibbsLLMPrior, LLMPrior
 from tqdm import tqdm
 
 from consistent_reasoning.models import OpenAICompatLLM
@@ -123,13 +122,14 @@ class SweepSchedule:
         return ordered
 
 
-class DemoPoolPrior(Prior, ABC):
-    """Prior over the labels of a demonstration pool (shared by the Gibbs variants)."""
-
+class CustomLLMPrior(LLMPrior):
     def __init__(self, llm: OpenAICompatLLM, demonstrations: dict[int, dict[str, Any]]):
-        super().__init__()
+        super().__init__(llm)
         self.llm = llm
         self.demonstrations = demonstrations
+        self._label_choices = (
+            ["True", "False"] if self.llm.instruction_tuned else [" True", " False"]
+        )
 
     def sample(
         self,
@@ -181,31 +181,6 @@ class DemoPoolPrior(Prior, ABC):
         )
         return key, example, demos
 
-    @abstractmethod
-    def sample_conditional(
-        self,
-        n_samples: int,
-        schema: dict[str, Any],
-        observed: dict[str, Any],
-        schedule: SweepSchedule,
-        verbose: bool = False,
-    ) -> list[dict[str, Any]]:
-        pass
-
-    def sample_parallel(self, *args: Any, **kwargs: Any) -> Any:
-        raise NotImplementedError("Not used for this experiment.")
-
-    def sample_conditional_parallel(self, *args: Any, **kwargs: Any) -> Any:
-        raise NotImplementedError("Not used for this experiment.")
-
-
-class CustomPrior(DemoPoolPrior):
-    def __init__(self, llm: OpenAICompatLLM, demonstrations: dict[int, dict[str, Any]]):
-        super().__init__(llm, demonstrations)
-        self._label_choices = (
-            ["True", "False"] if self.llm.instruction_tuned else [" True", " False"]
-        )
-
     def sample_conditional(
         self,
         n_samples: int,
@@ -236,11 +211,17 @@ class CustomPrior(DemoPoolPrior):
 
         return [{key: value} for _ in range(n_samples)]
 
+    def sample_parallel(self, *args: Any, **kwargs: Any) -> Any:
+        raise NotImplementedError("Not used for this experiment.")
 
-class LoggedGibbsLLMPrior(GibbsLLMPrior):
+    def sample_conditional_parallel(self, *args: Any, **kwargs: Any) -> Any:
+        raise NotImplementedError("Not used for this experiment.")
+
+
+class CustomGibbsLLMPrior(GibbsLLMPrior):
     def __init__(
         self,
-        llm_prior: DemoPoolPrior,
+        llm_prior: CustomLLMPrior,
         burn_in: int,
         thinning: int,
         sweep: bool = False,
@@ -250,7 +231,6 @@ class LoggedGibbsLLMPrior(GibbsLLMPrior):
         if fast_demo_order and not sweep:
             raise ValueError("fast_demo_order=True requires sweep=True.")
         super().__init__(llm_prior, burn_in, thinning, block_size=1, sweep=sweep)
-        self.llm_prior: DemoPoolPrior
         self.on_step = on_step
         self.fast_demo_order = fast_demo_order
 
@@ -365,7 +345,7 @@ def run_gibbs_search(
         log_path = Path(log_path)
         log_path.unlink(missing_ok=True)
 
-    base_prior = CustomPrior(llm=llm, demonstrations=demonstrations)
+    base_prior = CustomLLMPrior(llm=llm, demonstrations=demonstrations)
 
     state = {"step": 0}
 
@@ -392,7 +372,7 @@ def run_gibbs_search(
                 f"pred_dist={metrics['train_predict_distribution']}"
             )
 
-    gibbs = LoggedGibbsLLMPrior(
+    gibbs = CustomGibbsLLMPrior(
         llm_prior=base_prior,
         burn_in=args.burn_in,
         thinning=args.thinning,
