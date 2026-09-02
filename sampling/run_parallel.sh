@@ -47,6 +47,15 @@ else
     REASONING_FLAG=""
 fi
 
+# Reasoning traces for seed 0 only; see sampling/reasoning_traces.py.
+trace_flag() {  # trace_flag <seed>
+    if [ "$REASONING" = true ] && [ "$1" -eq 0 ]; then
+        echo "--n_traces 10"
+    else
+        echo "--n_traces 0"
+    fi
+}
+
 echo "Model: $MODEL ($MODEL_TYPE), port: $PORT, seeds: $NSEEDS, reasoning: $REASONING, temperature: $TEMP"
 
 PIDS=()
@@ -69,7 +78,7 @@ launch_field() {
 run_config() {
     local COMMON_ARGS="--model_name $MODEL --port $PORT --temperature $TEMP $REASONING_FLAG $*"
     for SEED in $(seq 0 $(($NSEEDS - 1))); do
-        SEED_ARGS="--seed $SEED"
+        SEED_ARGS="--seed $SEED $(trace_flag $SEED)"
 
         launch_field $COMMON_ARGS $SEED_ARGS --methods indep
         launch_field $COMMON_ARGS $SEED_ARGS --methods batch

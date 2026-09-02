@@ -5,5 +5,6 @@ __pycache__/
 tmp/
 *.pids
 results/
+reasoning_traces/
 logs/
 slurm_logs/

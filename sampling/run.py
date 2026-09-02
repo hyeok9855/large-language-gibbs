@@ -10,6 +10,13 @@ from priorbot.llm import OpenAICompatLLM
 from priorbot.priors import BarkerGibbsLLMPrior, GamblingGibbsLLMPrior, GibbsLLMPrior, LLMPrior
 
 from common.utils import MODEL_NAME_TO_TYPE
+from sampling.reasoning_traces import (
+    DEFAULT_N_TRACES,
+    TRACES_DIR,
+    TraceRecorder,
+    install_json,
+    trace_meta,
+)
 from sampling.targets import TARGETS, get_target
 from sampling.templates import create_template
 from sampling.utils import RESULTS_DIR, indexed_var_names
@@ -77,6 +84,16 @@ def get_args(description: str | None = None) -> Namespace:
         ),
     )
     parser.add_argument(
+        "--n_traces",
+        type=int,
+        default=None,
+        help=(
+            "Save the first N requests' reasoning trace and result under "
+            "reasoning_traces/ (mirrors the results layout). Defaults to 10 with "
+            "--manual_reasoning and 0 without; 0 disables."
+        ),
+    )
+    parser.add_argument(
         "--methods",
         nargs="+",
         choices=["indep", "batch", "gibbs", "barker_gibbs", "gambling_gibbs"],
@@ -106,6 +123,11 @@ def get_args(description: str | None = None) -> Namespace:
         args.burn_in = min(100, (args.n_samples // args.n_chains) * args.thinning // 10)
 
     args.model_type = MODEL_NAME_TO_TYPE[args.model_name]
+
+    # Reasoning traces are only interesting when there is reasoning to capture,
+    # so they default on with --manual_reasoning and off without.
+    if args.n_traces is None:
+        args.n_traces = DEFAULT_N_TRACES if args.manual_reasoning else 0
 
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -212,6 +234,24 @@ def main():
         "use_chat_api": args.model_type == "instruct",
     }
 
+    def trace(llm, method: str, filename: str):
+        """Record the first --n_traces calls' reasoning; returns a dump callback.
+        Only the decision kernels reach this - they are the sole methods with a
+        manual-reasoning variant."""
+        if not args.n_traces:
+            return lambda: None
+        recorder = TraceRecorder(args.n_traces)
+        install_json(llm, recorder)
+        path = (
+            TRACES_DIR
+            / args.target
+            / target.dir_name(args)
+            / f"{args.model_name.replace('/', '--')}_temp{args.temperature}"
+            / filename
+        )
+        meta = trace_meta(args, "json", method, filename)
+        return lambda: recorder.dump(path, meta)
+
     # 1. Independent Sampling
     indep_out_path = out_dir / output_filename(args, "indep")
     if not skip_method("indep", target, args, indep_out_path):
@@ -290,6 +330,7 @@ def main():
             temperature=1.0,
             max_tokens=32 + (args.max_tokens_reasoning if args.manual_reasoning else 0),
         )
+        dump_traces = trace(llm, "barker_gibbs", barker_out_path.name)
         barker_template = create_template(args, "barker_gibbs")
         gibbs_schema = target.object_schema(args, "barker_gibbs")
         barker_gibbs_prior = BarkerGibbsLLMPrior(
@@ -307,6 +348,7 @@ def main():
             verbose=args.verbose,
             pbar=True,
         )
+        dump_traces()
         save_kvar_samples(barker_out_path, barker_samples, args.gibbs_k_vars, args.n_samples)
 
     # 5. Gambling-Gibbs Sampling
@@ -318,6 +360,7 @@ def main():
             temperature=0.0 if not args.manual_reasoning else 1.0,
             max_tokens=32 + (args.max_tokens_reasoning if args.manual_reasoning else 0),
         )
+        dump_traces = trace(llm, "gambling_gibbs", gambling_out_path.name)
         gambling_template = create_template(args, "gambling_gibbs")
         gibbs_schema = target.object_schema(args, "gambling_gibbs")
         gambling_gibbs_prior = GamblingGibbsLLMPrior(
@@ -335,6 +378,7 @@ def main():
             verbose=args.verbose,
             pbar=True,
         )
+        dump_traces()
         save_kvar_samples(gambling_out_path, gambling_samples, args.gibbs_k_vars, args.n_samples)
 
 

@@ -9,14 +9,16 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from priorbot.llm import OpenAICompatLLM
-from priorbot.priors import BarkerGibbsLLMPrior, GamblingGibbsLLMPrior, GibbsLLMPrior
+from priorbot.priors import BarkerGibbsLLMPrior, GamblingGibbsLLMPrior, GibbsLLMPrior, LLMPrior
 
 from common.utils import MODEL_NAME_TO_TYPE
 from structure_learning.continuation import (
     ContinuationLLMPrior,
     ContinuationOpenAICompatLLM,
     partial_json,
+    quoted_choice_regex,
 )
+from structure_learning.prompt_record import PromptRecorder, save_prompt_record
 from structure_learning.utils.bn_utils import get_feature_renames
 from structure_learning.utils.llm_data_utils import get_llm_data_run_name
 from structure_learning.utils.misc_utils import DATASETS_DIR, load_meta
@@ -72,11 +74,7 @@ def main(args: Namespace) -> None:
     full_schema = build_schema(meta)
     system_prompt = "" if args.model_type == "base" else build_system_prompt(meta)
 
-    llm_cls = (
-        ContinuationOpenAICompatLLM
-        if args.sampling_method in ["direct", "gibbs"]
-        else OpenAICompatLLM
-    )
+    llm_cls = ContinuationOpenAICompatLLM if "prefill" in args.sampling_method else OpenAICompatLLM
     llm = llm_cls(
         base_url=args.base_url,
         model_name=args.model_name,
@@ -89,16 +87,83 @@ def main(args: Namespace) -> None:
 
     match args.sampling_method:
         case "direct" | "gibbs":
-            if args.manual_reasoning:
-                raise ValueError("Manual reasoning is not supported for direct or gibbs samplers.")
 
+            def llm_template(schema: dict[str, Any], observed: dict[str, Any] | None = None) -> str:
+                variables_to_resample = [v for v in schema["required"] if v != "reasoning"]
+
+                observed = observed or {}
+                dataset_description = get_dataset_description(meta)
+                feature_description = get_feature_description(
+                    meta, list(observed.keys()), variables_to_resample
+                )
+                schema_str = json.dumps(schema)
+                if observed:
+                    observed_str = json.dumps(observed)
+                    if args.model_type == "base":
+                        return (
+                            f"{dataset_description}\n{feature_description}\n"
+                            f"[Data point] {observed_str}"
+                        )
+                    else:
+                        required_str = '"' + '", "'.join(variables_to_resample) + '"'
+                        return (
+                            f"{dataset_description}\n{feature_description}\n"
+                            f"We have already observed the following features: {observed_str}. "
+                            f"Generate the value(s) for {required_str} according to the following "
+                            f"schema: {schema_str}."
+                        )
+                else:
+                    if args.model_type == "base":
+                        generation_prompt = "[Data point] "
+                    else:
+                        generation_prompt = (
+                            f"Generate a data point according to the following schema: {schema_str}"
+                        )
+                    return f"{dataset_description}\n{feature_description}\n{generation_prompt}"
+
+            llm_prior = LLMPrior(
+                llm=llm,
+                template=llm_template,
+                manual_reasoning=args.manual_reasoning,
+            )
+
+            if args.manual_reasoning:
+                llm_prior.reasoning_prompt = llm_prior.reasoning_prompt.replace(
+                    "step-by-step", "brief"
+                )
+            if args.sampling_method == "direct":
+                prior = llm_prior
+            else:  # gibbs
+                prior = GibbsLLMPrior(
+                    llm_prior=llm_prior,
+                    burn_in=args.burn_in,
+                    thinning=args.thinning,
+                    block_size=args.block_size,
+                    sweep=args.sweep,
+                )
+
+        case "direct_prefill" | "gibbs_prefill":
+            # Real-prefill conditioning: the decided fields are sent as text (the
+            # completion prefix for base models, an assistant prefill for
+            # instruct) and only the next value is grammar-constrained. Unlike
+            # schema pinning, the conditioning context is tokenised canonically
+            # by the tokeniser, its layout is fixed rather than sampled, and
+            # nothing depends on the backend honouring JSON property order.
+            if args.manual_reasoning:
+                raise ValueError("Manual reasoning is not supported for prefill samplers.")
+
+            # Feature description and schema follow the generation order
+            # (observed first, then the sampling order), exactly as the
+            # JSON-grammar paths render them. key_order is fixed per sample,
+            # so the user message is still identical across the per-field
+            # calls of one sample.
             def llm_template(
                 observed: dict[str, Any] | None = None,
                 next_key: str | None = None,
                 key_order: list[str] | None = None,
             ) -> str | tuple[str, str]:
                 if not next_key or not key_order:
-                    raise ValueError("Continuation LLM sampling requires next_key and key_order.")
+                    raise ValueError("Prefill sampling requires next_key and key_order.")
                 description = (
                     f"{get_dataset_description(meta)}\n"
                     f"{get_feature_description(meta, [], key_order)}"
@@ -119,9 +184,9 @@ def main(args: Namespace) -> None:
 
             llm_prior = ContinuationLLMPrior(llm=llm, template=llm_template)
 
-            if args.sampling_method == "direct":
+            if args.sampling_method == "direct_prefill":
                 prior = llm_prior
-            else:  # gibbs
+            else:  # gibbs_prefill
                 prior = GibbsLLMPrior(
                     llm_prior=llm_prior,
                     burn_in=args.burn_in,
@@ -233,6 +298,22 @@ def main(args: Namespace) -> None:
         case _:
             raise ValueError(f"Invalid sampling method: {args.sampling_method}")
 
+    # `--save_prompt` records the real requests; every method reaches the server
+    # through `llm.generate`, so one wrapper there covers all of them.
+    recorder = None
+    if args.save_prompt:
+        if "prefill" in args.sampling_method:
+
+            def constraint_of(schema: Any) -> Any:
+                return quoted_choice_regex(list(schema["enum"]))
+
+        else:
+
+            def constraint_of(schema: Any) -> Any:
+                return schema
+
+        recorder = PromptRecorder(llm, constraint_of)
+
     # Sampling
     n_samples_per_chain = (args.n_samples // args.n_chains) + (
         1 if args.n_samples % args.n_chains > 0 else 0
@@ -257,6 +338,11 @@ def main(args: Namespace) -> None:
     df.to_csv(output_path, index=False)
     print(f"Saved {len(df)} samples to {output_path}")
 
+    if recorder is not None:
+        save_prompt_record(
+            llm_output_dir / f"{filename}.prompt.md", args, llm, recorder, output_path.name
+        )
+
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Generate LLM prior data using priorbot.")
@@ -271,6 +357,8 @@ if __name__ == "__main__":
         choices=[
             "direct",
             "gibbs",
+            "direct_prefill",
+            "gibbs_prefill",
             "barker_gibbs",
             "gambling_gibbs",
         ],
@@ -287,6 +375,12 @@ if __name__ == "__main__":
         "--no_sweep", dest="sweep", action="store_false", help="Disable sweep for Gibbs sampling."
     )
     parser.add_argument("--manual_reasoning", action="store_true", default=False)
+    parser.add_argument(
+        "--save_prompt",
+        action="store_true",
+        default=False,
+        help="Write a Markdown record of the first and last request next to the CSV.",
+    )
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--no_pbar", dest="pbar", action="store_false", default=True)
     parser.add_argument("--seed", type=int, required=True)
@@ -309,6 +403,11 @@ if __name__ == "__main__":
             raise ValueError(
                 f"--manual_reasoning is only supported for instruct models; got "
                 f"{args.model_type} model {args.model_name!r}."
+            )
+        if "prefill" in args.sampling_method:
+            raise ValueError(
+                f"--manual_reasoning is not supported for prefill samplers "
+                f"({args.sampling_method!r})."
             )
         if args.temperature <= 0.0:
             raise ValueError("--manual_reasoning requires temperature > 0.0.")

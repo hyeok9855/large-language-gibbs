@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from priorbot.priors import GibbsLLMPrior
 
+from sampling.reasoning_traces import TraceRecorder, trace_meta
 from sampling.run import (
     get_args,
     output_filename,
@@ -13,9 +16,12 @@ from sampling_continuation.continuation import (
     ContinuationGamblingGibbsLLMPrior,
     ContinuationLLMPrior,
     ContinuationOpenAICompatLLM,
+    install_choice_recorder,
 )
 from sampling_continuation.templates import create_template
 from sampling_continuation.utils import RESULTS_DIR
+
+TRACES_DIR = Path(__file__).resolve().parent / "reasoning_traces"
 
 
 def main():
@@ -61,6 +67,23 @@ def main():
             template=create_template(args, method),
             shuffle_variables=shuffle,
         )
+
+    def trace(llm, method: str, filename: str):
+        """Install trace capture; returns a dump callback. Only the decision
+        kernels have reasoning in this family."""
+        if not args.n_traces:
+            return lambda: None
+        recorder = TraceRecorder(args.n_traces)
+        install_choice_recorder(llm, recorder)
+        path = (
+            TRACES_DIR
+            / args.target
+            / target.dir_name(args)
+            / f"{args.model_name.replace('/', '--')}_temp{args.temperature}"
+            / filename
+        )
+        meta = trace_meta(args, "continuation", method, filename)
+        return lambda: recorder.dump(path, meta)
 
     # 1. Independent sampling (a lone scalar per fresh context)
     indep_out_path = out_dir / output_filename(args, "indep")
@@ -110,6 +133,7 @@ def main():
     if not skip_method("barker_gibbs", target, args, barker_out_path):
         print("\n--- Running Barker-Gibbs (continuation) ---")
         llm = make_llm(1.0)
+        dump_traces = trace(llm, "barker_gibbs", barker_out_path.name)
         barker_gibbs_prior = ContinuationBarkerGibbsLLMPrior(
             llm=llm,
             template=create_template(args, "barker_gibbs"),
@@ -125,6 +149,7 @@ def main():
             verbose=args.verbose,
             pbar=True,
         )
+        dump_traces()
         save_kvar_samples(barker_out_path, barker_samples, args.gibbs_k_vars, args.n_samples)
 
     # 5. Gambling-Gibbs sampling; deterministic unless reasoning adds randomness.
@@ -132,6 +157,7 @@ def main():
     if not skip_method("gambling_gibbs", target, args, gambling_out_path):
         print("\n--- Running Gambling-Gibbs (continuation) ---")
         llm = make_llm(1.0 if args.manual_reasoning else 0.0)
+        dump_traces = trace(llm, "gambling_gibbs", gambling_out_path.name)
         gambling_gibbs_prior = ContinuationGamblingGibbsLLMPrior(
             llm=llm,
             template=create_template(args, "gambling_gibbs"),
@@ -147,6 +173,7 @@ def main():
             verbose=args.verbose,
             pbar=True,
         )
+        dump_traces()
         save_kvar_samples(gambling_out_path, gambling_samples, args.gibbs_k_vars, args.n_samples)
 
 

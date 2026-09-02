@@ -8,6 +8,8 @@ from priorbot.llm import OpenAICompatLLM, _check_json_schema_value
 from priorbot.priors import AsyncPrior, BarkerGibbsLLMPrior, GamblingGibbsLLMPrior
 from tqdm import tqdm
 
+from sampling.reasoning_traces import TraceRecorder
+
 MAX_FRACTION_DIGITS = 6
 
 REASONING_PREFIX = "Reasoning:"
@@ -95,7 +97,8 @@ class ContinuationOpenAICompatLLM(OpenAICompatLLM):
         manual_reasoning: bool = False,
         verbose: bool = False,
         max_trials: int = 10,
-    ) -> str:
+        return_reasoning: bool = False,
+    ) -> str | tuple[str, str | None]:
         """Constrained choice after an ``Answer:`` prefill.
 
         With ``manual_reasoning``, a free ``Reasoning:`` pass runs first
@@ -124,7 +127,7 @@ class ContinuationOpenAICompatLLM(OpenAICompatLLM):
                 ).strip()
                 if content not in choices:
                     raise ValueError(f"Response {content!r} is not in choice set {choices}")
-                return content
+                return (content, reasoning) if return_reasoning else content
             except Exception as exc:
                 print(f"Error during choice generation:\n{exc}")
                 if i < max_trials - 1:
@@ -303,3 +306,25 @@ class ContinuationGamblingGibbsLLMPrior(GamblingGibbsLLMPrior):
             verbose=verbose,
         )
         return answer == self.CHOICES[0]
+
+
+def install_choice_recorder(llm, recorder: TraceRecorder) -> None:
+    """Record reasoning from the first ``recorder.n_traces`` acceptance calls.
+
+    The two-call protocol yields reasoning separately, so request it and
+    return only the answer.
+    """
+    inner = llm.generate_choice
+
+    def wrapper(prompt, choices, manual_reasoning=False, **kwargs):
+        index = recorder.claim()
+        if index is None:
+            return inner(prompt, choices, manual_reasoning=manual_reasoning, **kwargs)
+        kwargs.pop("return_reasoning", None)
+        answer, reasoning = inner(
+            prompt, choices, manual_reasoning=manual_reasoning, return_reasoning=True, **kwargs
+        )
+        recorder.record(prompt, reasoning, answer, index)
+        return answer
+
+    llm.generate_choice = wrapper
