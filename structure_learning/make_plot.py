@@ -13,7 +13,9 @@ from structure_learning.utils.misc_utils import STRUCTURE_LEARNING_DIR
 # (base model, instruct model)
 MODEL_FAMILIES: list[tuple[str, ...]] = [
     ("meta-llama/Llama-3.1-8B", "meta-llama/Llama-3.1-8B-Instruct"),
+    ("meta-llama/Llama-3.1-70B", "meta-llama/Llama-3.1-70B-Instruct"),
     ("allenai/Olmo-3-1125-32B", "allenai/Olmo-3.1-32B-Instruct"),
+    ("google/gemma-4-31B", "google/gemma-4-31B-it"),
 ]
 # (model, method, temp, base_prior, gamma)
 AlgoKey = tuple[str, str, float | None, str | None, float | None]

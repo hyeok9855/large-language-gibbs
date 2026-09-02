@@ -619,6 +619,9 @@ consistent-reasoning = [
     { name = "requests" },
     { name = "tiktoken" },
 ]
+divergent-association-task = [
+    { name = "scipy" },
+]
 structure-learning = [
     { name = "dm-haiku" },
     { name = "flax" },
@@ -672,10 +675,11 @@ requires-dist = [
     { name = "priorbot", extras = ["remote-llm"], git = "https://github.com/henrygouk/priorbot.git?rev=d7c1ba31745fc0ed69a63a7a5b9f6b86becee4da" },
     { name = "requests", marker = "extra == 'consistent-reasoning'", specifier = ">=2.32.0" },
     { name = "scikit-learn", marker = "extra == 'structure-learning'", specifier = ">=1.7.2" },
+    { name = "scipy", marker = "extra == 'divergent-association-task'", specifier = ">=1.14" },
     { name = "tiktoken", marker = "extra == 'consistent-reasoning'", specifier = ">=0.8.0" },
     { name = "tqdm" },
 ]
-provides-extras = ["consistent-reasoning", "structure-learning", "structure-learning-cuda12", "structure-learning-cuda13"]
+provides-extras = ["consistent-reasoning", "structure-learning", "structure-learning-cuda12", "structure-learning-cuda13", "divergent-association-task"]
 
 [[package]]
 name = "markdown-it-py"
