@@ -10,6 +10,7 @@ from divergent_association_task.utils import RESULTS_DIR
 MODELS = [
     ("meta-llama/Llama-3.1-8B", "Llama-3.1-8B Base"),
     ("meta-llama/Llama-3.1-8B-Instruct", "Llama-3.1-8B Instruct"),
+    ("meta-llama/Llama-3.1-70B", "Llama-3.1-70B Base"),
     ("allenai/Olmo-3-1125-32B", "OLMo-3-32B Base"),
     ("allenai/Olmo-3.1-32B-Instruct", "OLMo-3-32B Instruct"),
     ("google/gemma-4-31B", "gemma-4-31B Base"),

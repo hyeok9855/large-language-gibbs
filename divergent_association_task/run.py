@@ -1,8 +1,13 @@
 """Divergent Association Task with the reference prompt of Bellemare-Pepin et al.
 
-direct: one free-form reply per answer, as in the paper.
+direct: one free-form reply per answer, as in the paper, redrawn until the
+        scorer can score it.
 gibbs:  start from a direct answer, then repeatedly resample one word given the
-        other nine (rendered as a numbered list in an assistant prefill).
+        other nine (rendered as a numbered list in an assistant prefill);
+        a draw that makes the answer unscorable is rejected and the chain stays.
+Both are rejection sampling from p(answer | scorable), which is the constraint
+the paper applies post hoc by dropping unscorable replies -- Gibbs cannot do
+that, because an unscorable state feeds itself into the next conditional.
 Answers are saved unscored; evaluate.py scores them.
 """
 
@@ -24,12 +29,15 @@ from divergent_association_task.utils import (
     MODEL_CHAT_TEMPLATE_KWARGS,
     RESULTS_DIR,
     dat_prompt,
+    is_scorable,
+    load_valid_words,
     parse_words,
 )
 
 # One list entry. The tail lets the tokenizer fuse a newline/period onto the word.
 ENTRY_REGEX = r" ?[A-Za-z][a-z-]{0,18}[a-z][.\n ]{0,2}"
-BASE_LEAD = "\n\nResponse:\n"
+# Redraws before giving up: a whole answer (direct) or one word (gibbs step).
+MAX_ATTEMPTS = 100
 
 
 class LLM:
@@ -66,17 +74,16 @@ class LLM:
         return response.choices[0].text or ""
 
     def answer(self, prompt: str) -> str:
-        """Free-form reply. Base models continue the prompt after a 'Response:' lead
-        and a '1.' list marker (a bare '1.' mostly yields an empty form)."""
+        """Free-form reply. Base models simply continue the prompt (completions API)."""
         if self.base:
-            return "1." + self._complete(prompt + BASE_LEAD + "1.", max_tokens=256)
+            return self._complete(prompt + "\n\n", max_tokens=256)
         return self._chat([{"role": "user", "content": prompt}], max_tokens=1024)
 
     def next_entry(self, prompt: str, prefill: str) -> str:
         """One more list entry after `prefill`, constrained to a single word."""
         extra = {"structured_outputs": {"regex": ENTRY_REGEX}}
         if self.base:
-            text = self._complete(prompt + BASE_LEAD + prefill, max_tokens=16, extra_body=extra)
+            text = self._complete(prompt + "\n\n" + prefill, max_tokens=16, extra_body=extra)
         else:
             extra |= {"add_generation_prompt": False, "continue_final_message": True}
             messages = [
@@ -91,16 +98,32 @@ def render(words: list[str], n_words: int) -> str:
     return "".join(f"{i + 1}. {w}\n" for i, w in enumerate(words)) + f"{n_words}."
 
 
-def gibbs_chain(llm: LLM, prompt: str, args: argparse.Namespace, seed: int, pbar: tqdm):
+def direct_draw(
+    llm: LLM, prompt: str, args: argparse.Namespace, valid: set[str], full: bool = False
+):
+    """One answer, redrawn until scorable. Returns the last draw either way, so an
+    exhausted budget shows up as an unscorable answer rather than a crash.
+
+    ``full`` additionally demands all n_words entries. Scorability alone does not:
+    a reply parsed into 9 words can still hold 7 embeddable ones, and it counts for
+    Direct -- but a Gibbs chain needs one word per slot to resample.
+    """
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        text = llm.answer(prompt)
+        words = parse_words(text, args.n_words)
+        if is_scorable(words, valid) and not (full and len(words) < args.n_words):
+            return words, text, attempt
+    return words, text, MAX_ATTEMPTS
+
+
+def gibbs_chain(llm: LLM, prompt: str, args: argparse.Namespace, valid: set[str], seed, pbar):
     rng = np.random.default_rng(seed)
-    for _ in range(20):
-        words = parse_words(llm.answer(prompt), args.n_words)
-        if len(words) == args.n_words:
-            break
-    else:
-        raise RuntimeError("Direct draws never produced a full answer to initialise from.")
+    words, _, _ = direct_draw(llm, prompt, args, valid, full=True)
+    if not is_scorable(words, valid) or len(words) < args.n_words:
+        raise RuntimeError(f"No scorable {args.n_words}-word draw to initialise the chain from.")
 
     chain, kept, order = [list(words)], [], []
+    accepted = rejected = 0
     n_steps = args.burn_in + (args.n_samples // args.n_chains) * args.thinning
     for step in range(1, n_steps + 1):
         if not order:  # systematic sweep in a fresh random order
@@ -108,12 +131,18 @@ def gibbs_chain(llm: LLM, prompt: str, args: argparse.Namespace, seed: int, pbar
         i = order.pop()
         others = [w for j, w in enumerate(words) if j != i]
         rng.shuffle(others)
-        words[i] = llm.next_entry(prompt, render(others, args.n_words))
+        for _ in range(MAX_ATTEMPTS):
+            proposal = list(words)
+            proposal[i] = llm.next_entry(prompt, render(others, args.n_words))
+            if is_scorable(proposal, valid):
+                words, accepted = proposal, accepted + 1
+                break
+            rejected += 1
         chain.append(list(words))
         if step > args.burn_in and (step - args.burn_in) % args.thinning == 0:
             kept.append(list(words))
         pbar.update()
-    return kept, chain
+    return kept, chain, accepted, rejected
 
 
 def save(path: Path, payload: dict) -> None:
@@ -127,6 +156,8 @@ def main(args: argparse.Namespace) -> None:
     out_dir = RESULTS_DIR / f"{args.model_name.replace('/', '--')}_temp{args.temperature}"
     out_dir.mkdir(parents=True, exist_ok=True)
     prompt = dat_prompt(args.n_words)
+    valid = load_valid_words()
+    print(f"Rejecting unscorable answers against {len(valid)} embeddable words.")
     meta = {
         "model_name": args.model_name,
         "model_type": args.model_type,
@@ -142,20 +173,24 @@ def main(args: argparse.Namespace) -> None:
         print("--- direct ---")
         llm, t0 = LLM(args), time.time()
         with ThreadPoolExecutor(args.n_chains) as pool:
-            responses = list(
+            draws = list(
                 tqdm(
-                    pool.map(lambda _: llm.answer(prompt), range(args.n_samples)),
+                    pool.map(
+                        lambda _: direct_draw(llm, prompt, args, valid), range(args.n_samples)
+                    ),
                     total=args.n_samples,
                 )
             )
-        samples = [parse_words(r, args.n_words) for r in responses]
+        attempts = [a for *_, a in draws]
+        print(f"Attempts per answer: {np.mean(attempts):.2f} (max {max(attempts)})")
         save(
             path,
             {
                 "method": "direct",
                 **meta,
-                "samples": samples,
-                "responses": responses,
+                "samples": [words for words, *_ in draws],
+                "responses": [text for _, text, _ in draws],
+                "attempts": attempts,
                 "llm_calls": llm.calls,
                 "duration_seconds": time.time() - t0,
             },
@@ -169,10 +204,13 @@ def main(args: argparse.Namespace) -> None:
         with tqdm(total=n_steps * args.n_chains) as pbar, ThreadPoolExecutor(args.n_chains) as pool:
             results = list(
                 pool.map(
-                    lambda c: gibbs_chain(llm, prompt, args, args.seed * 1000 + c, pbar),
+                    lambda c: gibbs_chain(llm, prompt, args, valid, args.seed * 1000 + c, pbar),
                     range(args.n_chains),
                 )
             )
+        accepted = sum(a for *_, a, _ in results)
+        rejected = sum(r for *_, r in results)
+        print(f"Acceptance rate: {accepted / (accepted + rejected):.3f}")
         save(
             path,
             {
@@ -181,8 +219,10 @@ def main(args: argparse.Namespace) -> None:
                 "n_chains": args.n_chains,
                 "burn_in": args.burn_in,
                 "thinning": args.thinning,
-                "samples": [s for kept, _ in results for s in kept],
-                "chains": [chain for _, chain in results],
+                "samples": [s for kept, *_ in results for s in kept],
+                "chains": [chain for _, chain, *_ in results],
+                "accepted": accepted,
+                "rejected": rejected,
                 "llm_calls": llm.calls,
                 "duration_seconds": time.time() - t0,
             },

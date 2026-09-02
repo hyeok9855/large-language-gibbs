@@ -48,3 +48,35 @@ def parse_words(text: str, n_words: int = 10) -> list[str]:
         if item and len(item.split()) <= 3:
             words.append(item)
     return words[:n_words]
+
+
+VALID_WORDS_PATH = ASSETS_DIR / "valid_words.txt"
+
+
+def load_valid_words() -> set[str]:
+    """The words the scorer can embed (its dictionary intersected with GloVe).
+    Cached from the scoring assets on first use; the scan takes a minute."""
+    if not VALID_WORDS_PATH.exists():
+        from divergent_association_task import dat
+
+        VALID_WORDS_PATH.write_text("\n".join(sorted(dat.Model().vectors)) + "\n")
+    return set(VALID_WORDS_PATH.read_text().split())
+
+
+def validate(word: str, valid_words: set[str]) -> str | None:
+    """`dat.Model.validate`: the form the scorer will use, or None if it cannot
+    embed the word at all."""
+    clean = re.sub(r"[^a-zA-Z- ]+", "", word).strip().lower()
+    if len(clean) <= 1:
+        return None
+    if " " in clean:
+        candidates = [re.sub(r" +", "-", clean), re.sub(r" +", "", clean)]
+    else:
+        candidates = [clean] + ([clean.replace("-", "")] if "-" in clean else [])
+    return next((c for c in candidates if c in valid_words), None)
+
+
+def is_scorable(words: list[str], valid_words: set[str], minimum: int = 7) -> bool:
+    """Whether `dat.Model.dat` returns a score: at least `minimum` distinct words
+    it can embed, so at most n_words - minimum may be non-words or repeats."""
+    return len({v for word in words if (v := validate(word, valid_words))}) >= minimum

@@ -10,7 +10,7 @@ replies parsed into words and scored post hoc with Olson's scorer (`dat.py`,
 vendored). No system prompt, no output constraints, no rejection sampling.
 
 - **direct**: one free-form reply per answer (the paper's protocol). Base models
-  continue the prompt after `Response:` and a `1.` list marker (completions API).
+  continue the prompt via the completions API.
 - **gibbs**: initialised from a direct answer; each step shows the other 9 words
   as a numbered list in an assistant prefill and draws entry 10 (constrained to a
   single word), sweeping the 10 slots in random order. Defaults: 25 chains,
