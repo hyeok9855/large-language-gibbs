@@ -260,9 +260,10 @@ if __name__ == "__main__":
         help="how the prefill writes the words so far; one run per format",
     )
     parser.add_argument(
-        "--answer_prefix",
-        action="store_true",
-        help='open the prefill with "Here are ten words:"',
+        "--no-answer_prefix",
+        dest="answer_prefix",
+        action="store_false",
+        help="do not use the answer prefix in the prefill",
     )
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--n_samples", type=int, default=500, help="answers per method")
