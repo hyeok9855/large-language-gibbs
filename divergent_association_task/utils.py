@@ -30,26 +30,6 @@ def dat_prompt(n_words: int = 10) -> str:
     )
 
 
-_LIST_ITEM = re.compile(r"^[ \t]*(?:\d+[.):]|[-*•])[ \t]*(.+?)[ \t]*$", re.MULTILINE)
-
-
-def parse_words(text: str, n_words: int = 10) -> list[str]:
-    """First n_words list entries of a free-form answer (numbered, bulleted, or one
-    per line / comma-separated). Entries are stripped of markdown and trailing
-    explanations; the scorer does the rest of the cleaning."""
-    items = _LIST_ITEM.findall(text)
-    if len(items) < n_words:  # inline numbering, or one word per line / comma
-        items = re.split(r"[\n,;:]+|\s+(?=\d+[.)]\s)", text)
-        items = [re.sub(r"^\s*(?:\d+[.):]|[-*•])\s*", "", p) for p in items]
-    words = []
-    for item in items:
-        item = re.sub(r"[*_`\"'“”]", "", item)
-        item = re.split(r"\s[-–—]\s|[:(]", item)[0].strip(" .,;:!")
-        if item and len(item.split()) <= 3:
-            words.append(item)
-    return words[:n_words]
-
-
 VALID_WORDS_PATH = ASSETS_DIR / "valid_words.txt"
 
 

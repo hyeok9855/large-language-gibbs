@@ -17,7 +17,12 @@ MODELS = [
     ("google/gemma-4-31B-it", "gemma-4-31B Instruct"),
     ("Qwen/Qwen3.8-27B", "Qwen3.8-27B Instruct"),
 ]
-METHODS = [("direct", "Direct"), ("gibbs", "Gibbs")]
+FORMATS = [
+    ("numbered", r"\texttt{1.\ 2.}"),
+    ("bullet", r"\texttt{-}"),
+    ("comma", r"\texttt{,}"),
+    ("bracket", r"\texttt{[a, b,}"),
+]
 
 
 def cell(entries: list[dict], model: str, method: str) -> str:
@@ -28,14 +33,17 @@ def cell(entries: list[dict], model: str, method: str) -> str:
     return f"{e['mean']:.2f} $\\pm$ {e['std']:.2f} ({e['n_valid']}/{e['n_answers']})"
 
 
-def main(summary_path: Path) -> None:
+def main(summary_path: Path, tag: str) -> None:
     entries = json.loads(summary_path.read_text())
-    print(r"\begin{tabular}{l" + "c" * len(METHODS) + "}")
+    print(r"\begin{tabular}{ll" + "c" * len(FORMATS) + "}")
     print(r"\toprule")
-    print("Model & " + " & ".join(label for _, label in METHODS) + r" \\")
+    print("Model & Method & " + " & ".join(label for _, label in FORMATS) + r" \\")
     print(r"\midrule")
     for model, label in MODELS:
-        print(f"{label} & " + " & ".join(cell(entries, model, m) for m, _ in METHODS) + r" \\")
+        direct = [cell(entries, model, f"direct_{f}{tag}") for f, _ in FORMATS]
+        gibbs = [cell(entries, model, f"gibbs_{f}{tag}") for f, _ in FORMATS]
+        print(f"{label} & Direct & " + " & ".join(direct) + r" \\")
+        print(" & Gibbs & " + " & ".join(gibbs) + r" \\")
     print(r"\bottomrule")
     print(r"\end{tabular}")
 
@@ -43,4 +51,6 @@ def main(summary_path: Path) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--summary", type=Path, default=RESULTS_DIR / "summary.json")
-    main(parser.parse_args().summary)
+    parser.add_argument("--prefix", action="store_true", help="table of the --answer_prefix runs")
+    args = parser.parse_args()
+    main(args.summary, "_prefix" if args.prefix else "")

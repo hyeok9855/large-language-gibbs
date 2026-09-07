@@ -38,6 +38,7 @@ def summarize(model: dat.Model, path: Path) -> dict:
     }
     if "chains" in data:  # DAT score along each chain, None where unscorable
         entry["trajectories"] = [score(model, chain) for chain in data["chains"]]
+        entry["list_format"] = data.get("list_format")
     return entry
 
 
@@ -57,16 +58,13 @@ def plot(entries: list[dict], out_path: Path) -> None:
         for e in mine:
             if "trajectories" not in e:
                 continue
-            grid = np.array(e["trajectories"], dtype=float)  # None -> nan
+            grid = np.array(e["trajectories"], dtype=float)
             with np.errstate(all="ignore"):
-                ax_traj.plot(np.nanmean(grid, axis=0), c="C0")
-            ax_traj.set_xlabel("Gibbs step")
-            ax_traj.set_ylabel("mean DAT of scorable states", color="C0")
-            ax_valid = ax_traj.twinx()
-            ax_valid.plot(np.mean(~np.isnan(grid), axis=0), c="C1", lw=0.8)
-            ax_valid.set_ylim(-0.02, 1.02)
-            ax_valid.set_ylabel("fraction scorable", color="C1")
+                ax_traj.plot(np.nanmean(grid, axis=0), lw=0.8, label=e["method"])
+        ax_traj.set_xlabel("Gibbs step")
+        ax_traj.legend(fontsize=7)
     axes[0][0].set_ylabel("DAT score")
+    axes[1][0].set_ylabel("mean DAT along the chain")
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
     print(f"Saved plot to {out_path}")
@@ -77,11 +75,11 @@ def main(results_dir: Path, do_plot: bool) -> None:
     model = dat.Model()
     paths = [p for p in sorted(results_dir.rglob("*.json")) if p.name != "summary.json"]
     entries = [summarize(model, p) for p in paths]
-    print(f"\n{'model':<34} {'method':<8} {'valid':>9} {'DAT':>16}")
+    print(f"\n{'model':<34} {'method':<15} {'valid':>9} {'DAT':>16}")
     for e in entries:
         dat_str = f"{e['mean']:.2f} +/- {e['std']:.2f}" if e["mean"] is not None else "-"
         valid = f"{e['n_valid']}/{e['n_answers']}"
-        print(f"{e['model_name']:<34} {e['method']:<8} {valid:>9} {dat_str:>16}")
+        print(f"{e['model_name']:<34} {e['method']:<15} {valid:>9} {dat_str:>16}")
     print(f"Human mean (Olson et al. 2021): {HUMAN_MEAN_DAT}")
     (results_dir / "summary.json").write_text(json.dumps(entries, indent=1))
     if do_plot and entries:

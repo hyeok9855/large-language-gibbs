@@ -1,13 +1,14 @@
 """Divergent Association Task with the reference prompt of Bellemare-Pepin et al.
 
-direct: one free-form reply per answer, as in the paper, redrawn until the
-        scorer can score it.
+direct: the answer built one entry at a time by continuing the partial list in
+        an assistant prefill (ancestral order), redrawn whole until scorable.
 gibbs:  start from a direct answer, then repeatedly resample one word given the
-        other nine (rendered as a numbered list in an assistant prefill);
-        a draw that makes the answer unscorable is rejected and the chain stays.
+        other nine, through the same prefill; a draw that makes the answer
+        unscorable is rejected and the chain stays.
+Both methods share the prefill and the single-word grammar, so they differ only
+in the sampling scheme.
 Both are rejection sampling from p(answer | scorable), which is the constraint
-the paper applies post hoc by dropping unscorable replies -- Gibbs cannot do
-that, because an unscorable state feeds itself into the next conditional.
+Bellemare-Pepin et al. apply post hoc by dropping unscorable replies.
 Answers are saved unscored; evaluate.py scores them.
 """
 
@@ -31,11 +32,19 @@ from divergent_association_task.utils import (
     dat_prompt,
     is_scorable,
     load_valid_words,
-    parse_words,
 )
 
 # One list entry. The tail lets the tokenizer fuse a newline/period onto the word.
-ENTRY_REGEX = r" ?[A-Za-z][a-z-]{0,18}[a-z][.\n ]{0,2}"
+# The tail admits the delimiters a tokenizer fuses onto a word (",", "]", "\n",
+# "\n2. ", ...) but no letters; parsing keeps the first letter run.
+ENTRY_REGEX = r" ?[A-Za-z][a-z-]{0,18}[a-z][,.\]\n 0-9-]{0,4}"
+# How the words so far are written, ending at the marker of the next entry.
+FORMATS = {
+    "numbered": lambda ws: "".join(f"{i + 1}. {w}\n" for i, w in enumerate(ws)) + f"{len(ws) + 1}.",
+    "bullet": lambda ws: "".join(f"- {w}\n" for w in ws) + "-",
+    "comma": lambda ws: ", ".join(ws) + ("," if ws else ""),
+    "bracket": lambda ws: "[" + ", ".join(ws) + ("," if ws else ""),
+}
 # Redraws before giving up: a whole answer (direct) or one word (gibbs step).
 MAX_ATTEMPTS = 100
 
@@ -56,7 +65,6 @@ class LLM:
         extra = kwargs.pop("extra_body", {})
         if self.template_kwargs:
             extra["chat_template_kwargs"] = self.template_kwargs
-        self.calls += 1
         response = self.client.chat.completions.create(
             model=self.model_name,
             messages=messages,
@@ -64,20 +72,15 @@ class LLM:
             extra_body=extra,
             **kwargs,
         )
+        self.calls += 1
         return response.choices[0].message.content or ""
 
     def _complete(self, prompt: str, **kwargs) -> str:
-        self.calls += 1
         response = self.client.completions.create(
             model=self.model_name, prompt=prompt, temperature=self.temperature, **kwargs
         )
+        self.calls += 1
         return response.choices[0].text or ""
-
-    def answer(self, prompt: str) -> str:
-        """Free-form reply. Base models simply continue the prompt (completions API)."""
-        if self.base:
-            return self._complete(prompt + "\n\n", max_tokens=256)
-        return self._chat([{"role": "user", "content": prompt}], max_tokens=1024)
 
     def next_entry(self, prompt: str, prefill: str) -> str:
         """One more list entry after `prefill`, constrained to a single word."""
@@ -85,42 +88,39 @@ class LLM:
         if self.base:
             text = self._complete(prompt + "\n\n" + prefill, max_tokens=16, extra_body=extra)
         else:
-            extra |= {"add_generation_prompt": False, "continue_final_message": True}
-            messages = [
-                {"role": "user", "content": prompt},
-                {"role": "assistant", "content": prefill},
-            ]
+            messages = [{"role": "user", "content": prompt}]
+            if prefill:  # an empty prefill is just the start of the assistant turn
+                messages.append({"role": "assistant", "content": prefill})
+                extra |= {"add_generation_prompt": False, "continue_final_message": True}
             text = self._chat(messages, max_tokens=16, extra_body=extra)
-        return re.search(r"[A-Za-z][a-z-]*", text).group(0)
+        return re.search(r"[A-Za-z][a-z-]*", text).group(0).rstrip("-")
 
 
-def render(words: list[str], n_words: int) -> str:
-    return "".join(f"{i + 1}. {w}\n" for i, w in enumerate(words)) + f"{n_words}."
+def render_prefill(args, fmt: str, ws: list[str]) -> str:
+    """Prefill for the next entry: the words so far in `fmt`, optionally opened by
+    the answer prefix on its own line."""
+    prefix = "Here are ten words:\n" if args.answer_prefix else ""
+    return prefix + FORMATS[fmt](ws)
 
 
-def direct_draw(
-    llm: LLM, prompt: str, args: argparse.Namespace, valid: set[str], full: bool = False
-):
-    """One answer, redrawn until scorable. Returns the last draw either way, so an
-    exhausted budget shows up as an unscorable answer rather than a crash.
-
-    ``full`` additionally demands all n_words entries. Scorability alone does not:
-    a reply parsed into 9 words can still hold 7 embeddable ones, and it counts for
-    Direct -- but a Gibbs chain needs one word per slot to resample.
-    """
+def direct_draw(llm: LLM, prompt: str, args, valid: set[str], fmt: str):
+    """One answer built entry by entry in `fmt`, redrawn whole until scorable.
+    Returns the last draw either way, so an exhausted budget shows up as an
+    unscorable answer rather than a crash."""
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        text = llm.answer(prompt)
-        words = parse_words(text, args.n_words)
-        if is_scorable(words, valid) and not (full and len(words) < args.n_words):
-            return words, text, attempt
-    return words, text, MAX_ATTEMPTS
+        words: list[str] = []
+        for _ in range(args.n_words):
+            words.append(llm.next_entry(prompt, render_prefill(args, fmt, words)))
+        if is_scorable(words, valid):
+            return words, attempt
+    return words, MAX_ATTEMPTS
 
 
-def gibbs_chain(llm: LLM, prompt: str, args: argparse.Namespace, valid: set[str], seed, pbar):
+def gibbs_chain(llm: LLM, prompt: str, args, valid: set[str], fmt: str, seed: int, pbar):
     rng = np.random.default_rng(seed)
-    words, _, _ = direct_draw(llm, prompt, args, valid, full=True)
-    if not is_scorable(words, valid) or len(words) < args.n_words:
-        raise RuntimeError(f"No scorable {args.n_words}-word draw to initialise the chain from.")
+    words, _ = direct_draw(llm, prompt, args, valid, fmt)
+    if not is_scorable(words, valid):
+        raise RuntimeError("No scorable direct draw to initialise the chain from.")
 
     chain, kept, order = [list(words)], [], []
     accepted = rejected = 0
@@ -133,7 +133,7 @@ def gibbs_chain(llm: LLM, prompt: str, args: argparse.Namespace, valid: set[str]
         rng.shuffle(others)
         for _ in range(MAX_ATTEMPTS):
             proposal = list(words)
-            proposal[i] = llm.next_entry(prompt, render(others, args.n_words))
+            proposal[i] = llm.next_entry(prompt, render_prefill(args, fmt, others))
             if is_scorable(proposal, valid):
                 words, accepted = proposal, accepted + 1
                 break
@@ -168,43 +168,52 @@ def main(args: argparse.Namespace) -> None:
         "prompt": prompt,
     }
 
-    path = out_dir / f"direct_n{args.n_samples}_seed{args.seed}.json"
-    if "direct" in args.methods and not path.exists():
-        print("--- direct ---")
-        llm, t0 = LLM(args), time.time()
-        with ThreadPoolExecutor(args.n_chains) as pool:
-            draws = list(
-                tqdm(
-                    pool.map(
-                        lambda _: direct_draw(llm, prompt, args, valid), range(args.n_samples)
-                    ),
-                    total=args.n_samples,
+    tag = "_prefix" if args.answer_prefix else ""
+    for fmt in args.list_format:
+        path = out_dir / f"direct_{fmt}{tag}_n{args.n_samples}_seed{args.seed}.json"
+        if "direct" in args.methods and not path.exists():
+            print(f"--- direct ({fmt}) ---")
+            llm, t0 = LLM(args), time.time()
+            with ThreadPoolExecutor(args.n_chains) as pool:
+                draws = list(
+                    tqdm(
+                        pool.map(
+                            lambda _: direct_draw(llm, prompt, args, valid, fmt),
+                            range(args.n_samples),
+                        ),
+                        total=args.n_samples,
+                    )
                 )
+            attempts = [a for _, a in draws]
+            print(f"Attempts per answer: {np.mean(attempts):.2f} (max {max(attempts)})")
+            save(
+                path,
+                {
+                    "method": f"direct_{fmt}{tag}",
+                    **meta,
+                    "list_format": fmt,
+                    "answer_prefix": args.answer_prefix,
+                    "samples": [words for words, _ in draws],
+                    "attempts": attempts,
+                    "llm_calls": llm.calls,
+                    "duration_seconds": time.time() - t0,
+                },
             )
-        attempts = [a for *_, a in draws]
-        print(f"Attempts per answer: {np.mean(attempts):.2f} (max {max(attempts)})")
-        save(
-            path,
-            {
-                "method": "direct",
-                **meta,
-                "samples": [words for words, *_ in draws],
-                "responses": [text for _, text, _ in draws],
-                "attempts": attempts,
-                "llm_calls": llm.calls,
-                "duration_seconds": time.time() - t0,
-            },
-        )
 
-    path = out_dir / f"gibbs_n{args.n_samples}_nc{args.n_chains}_seed{args.seed}.json"
-    if "gibbs" in args.methods and not path.exists():
-        print("--- gibbs ---")
+        path = (
+            out_dir / f"gibbs_{fmt}{tag}_n{args.n_samples}_nc{args.n_chains}_seed{args.seed}.json"
+        )
+        if "gibbs" not in args.methods or path.exists():
+            continue
+        print(f"--- gibbs ({fmt}) ---")
         llm, t0 = LLM(args), time.time()
         n_steps = args.burn_in + (args.n_samples // args.n_chains) * args.thinning
         with tqdm(total=n_steps * args.n_chains) as pbar, ThreadPoolExecutor(args.n_chains) as pool:
             results = list(
                 pool.map(
-                    lambda c: gibbs_chain(llm, prompt, args, valid, args.seed * 1000 + c, pbar),
+                    lambda c: gibbs_chain(
+                        llm, prompt, args, valid, fmt, args.seed * 1000 + c, pbar
+                    ),
                     range(args.n_chains),
                 )
             )
@@ -214,8 +223,10 @@ def main(args: argparse.Namespace) -> None:
         save(
             path,
             {
-                "method": "gibbs",
+                "method": f"gibbs_{fmt}{tag}",
                 **meta,
+                "list_format": fmt,
+                "answer_prefix": args.answer_prefix,
                 "n_chains": args.n_chains,
                 "burn_in": args.burn_in,
                 "thinning": args.thinning,
@@ -236,7 +247,22 @@ if __name__ == "__main__":
     parser.add_argument("--base_url", default=None)
     parser.add_argument("--api_key", default="NOT_A_KEY")
     parser.add_argument(
-        "--methods", nargs="+", choices=["direct", "gibbs"], default=["direct", "gibbs"]
+        "--methods",
+        nargs="+",
+        choices=["direct", "gibbs"],
+        default=["direct", "gibbs"],
+    )
+    parser.add_argument(
+        "--list_format",
+        nargs="+",
+        choices=list(FORMATS.keys()),
+        default=list(FORMATS.keys()),
+        help="how the prefill writes the words so far; one run per format",
+    )
+    parser.add_argument(
+        "--answer_prefix",
+        action="store_true",
+        help='open the prefill with "Here are ten words:"',
     )
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--n_samples", type=int, default=500, help="answers per method")
